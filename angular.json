@@ -27,10 +27,25 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "**/*",
+                "input": "node_modules/cesium/Build/Cesium",
+                "output": "cesium"
               }
             ],
             "styles": [
+              "node_modules/cesium/Build/Cesium/Widgets/widgets.css",
               "src/styles.scss"
+            ],
+            "allowedCommonJsDependencies": [
+              "mersenne-twister",
+              "urijs",
+              "protobufjs/dist/minimal/protobuf.js",
+              "lerc",
+              "bitmap-sdf",
+              "grapheme-splitter",
+              "nosleep.js"
             ]
           },
           "configurations": {
@@ -38,8 +53,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumWarning": "6MB",
+                  "maximumError": "8MB"
                 },
                 {
                   "type": "anyComponentStyle",

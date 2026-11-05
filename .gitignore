@@ -42,3 +42,17 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Local environment (contains secrets such as the Cesium ion token)
+/src/environments/environment.ts
+
+# Angular CLI working folder
+/.angular/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
