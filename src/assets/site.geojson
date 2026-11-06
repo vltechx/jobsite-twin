@@ -1,0 +1,77 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Site Boundary",
+        "type": "boundary",
+        "description": "Approximate site boundary around the mine pit."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-112.1760, 40.5060],
+            [-112.1520, 40.5020],
+            [-112.1280, 40.5080],
+            [-112.1180, 40.5230],
+            [-112.1250, 40.5390],
+            [-112.1480, 40.5450],
+            [-112.1720, 40.5400],
+            [-112.1820, 40.5240],
+            [-112.1760, 40.5060]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Main Haul Road",
+        "type": "haul-road",
+        "description": "Approximate route from the site entrance down into the pit."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-112.1050, 40.5420],
+          [-112.1120, 40.5380],
+          [-112.1200, 40.5350],
+          [-112.1270, 40.5320],
+          [-112.1330, 40.5280],
+          [-112.1380, 40.5240],
+          [-112.1430, 40.5225],
+          [-112.1480, 40.5230]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Stockpile",
+        "type": "stockpile",
+        "description": "Ore stockpile (approximate location)."
+      },
+      "geometry": { "type": "Point", "coordinates": [-112.1650, 40.5370] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Site Office",
+        "type": "office",
+        "description": "Site office and parking (approximate location)."
+      },
+      "geometry": { "type": "Point", "coordinates": [-112.1080, 40.5460] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Haul Road Entrance",
+        "type": "entrance",
+        "description": "Entrance to the main haul road (approximate location)."
+      },
+      "geometry": { "type": "Point", "coordinates": [-112.1050, 40.5420] }
+    }
+  ]
+}

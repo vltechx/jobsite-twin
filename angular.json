@@ -30,6 +30,11 @@
               },
               {
                 "glob": "**/*",
+                "input": "src/assets",
+                "output": "assets"
+              },
+              {
+                "glob": "**/*",
                 "input": "node_modules/cesium/Build/Cesium",
                 "output": "cesium"
               }
