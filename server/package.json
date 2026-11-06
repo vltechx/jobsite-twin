@@ -1,0 +1,33 @@
+{
+  "name": "jobsite-twin-server",
+  "version": "0.1.0",
+  "description": "GraphQL backend for Jobsite Twin (Apollo Server + PostgreSQL/PostGIS)",
+  "scripts": {
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:psql": "docker compose exec db sh -c 'exec psql -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" \"$@\"' --",
+    "migrate": "node --env-file=.env --import tsx src/scripts/migrate.ts",
+    "seed": "node --env-file=.env --import tsx src/scripts/seed.ts",
+    "dev": "node --env-file=.env --watch --import tsx src/index.ts",
+    "start": "node --env-file=.env --import tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@apollo/server": "^5.5.1",
+    "dataloader": "^2.2.3",
+    "graphql": "^16.15.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}

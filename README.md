@@ -12,6 +12,32 @@ A prototype construction-site digital twin built with Angular and CesiumJS.
 - **Timeline playback** that loops over the truck's trip; change speed with Cesium's clock controls.
 - **View controls**: *Follow truck* and *Site view* buttons.
 - **Coordinate helper** (development builds only): click the terrain to log latitude, longitude and height to the browser console.
+- **GraphQL backend** ([`server/`](server/)) for scenarios, machines with routes, and simulation runs, stored in PostgreSQL/PostGIS. The Angular app doesn't use it yet; it still loads `site.geojson` directly.
+
+
+## Architecture
+
+```mermaid
+flowchart TB
+  subgraph Browser
+    A["Angular app<br/>viewer, controls, services"]
+    C["CesiumJS<br/>terrain, entities, clock"]
+    S["Static assets<br/>site.geojson, truck glTF"]
+  end
+  ion["Cesium ion<br/>world terrain, imagery"]
+  subgraph Backend["Backend (server/)"]
+    G["GraphQL server :4000<br/>Apollo Server, resolvers, DataLoader"]
+    P[("PostgreSQL + PostGIS<br/>Docker, migrations, seed")]
+  end
+  SB["Apollo Sandbox<br/>manual API testing"]
+
+  A --> C
+  C --> S
+  C -->|HTTPS + ion token| ion
+  SB --> G
+  G --> P
+  A -.->|planned: load scenarios| G
+```
 
 ## Tech stack
 
@@ -20,6 +46,13 @@ A prototype construction-site digital twin built with Angular and CesiumJS.
 - [Cesium ion](https://cesium.com/platform/cesium-ion/) for terrain and imagery
 - TypeScript 5.9
 - [Vitest](https://vitest.dev) for unit tests
+
+**Backend** (`server/`):
+
+- Node.js 22, [Apollo Server](https://www.apollographql.com/docs/apollo-server) 5, [graphql-js](https://github.com/graphql/graphql-js)
+- PostgreSQL 17 + [PostGIS](https://postgis.net) 3.5 via [node-postgres](https://node-postgres.com) (`pg`), run locally with Docker Compose
+- [DataLoader](https://github.com/graphql/dataloader) for batched queries
+- Plain SQL migrations, [tsx](https://tsx.is) to run TypeScript
 
 ## Setup
 
@@ -61,6 +94,37 @@ Open <http://localhost:4200>.
 
 Other commands: `npx ng build` (production build to `dist/`), `npx ng test` (unit tests).
 
+### Backend (optional)
+
+Requires [Docker](https://www.docker.com/products/docker-desktop/) for the local database. The `postgis/postgis` image is amd64-only; on Apple Silicon, Docker Desktop runs it under emulation.
+
+```bash
+cd server
+npm install
+cp .env.example .env    # then set a password in POSTGRES_PASSWORD and DATABASE_URL
+npm run db:up           # start PostgreSQL + PostGIS (docker compose)
+npm run migrate         # apply migrations/*.sql
+npm run seed            # import src/assets/site.geojson as a scenario with a haul truck
+npm run dev             # GraphQL server with reload at http://localhost:4000
+```
+
+Open <http://localhost:4000> for the Apollo Sandbox. Example query:
+
+```graphql
+{
+  scenarios {
+    name
+    site { name }
+    machines { name type speedMps route { seq lat lon } }
+    runs { status startedAt durationSec distanceM }
+  }
+}
+```
+
+Other scripts: `npm start` (no reload), `npm run typecheck`, `npm run db:down`. `server/.env` is git-ignored.
+
+To query the database directly, open a `psql` shell in the container with `npm run db:psql`, or run one statement with `npm run db:psql -- -c "SELECT * FROM scenario;"`. Wrap geometry columns in `ST_AsText(...)` to make them readable.
+
 ## How I built it
 
 - Developed with [Claude Code](https://claude.com/claude-code) in VS Code, guided by a `CLAUDE.md` I kept updated.
@@ -69,7 +133,7 @@ Other commands: `npx ng build` (production build to `dist/`), `npx ng test` (uni
 
 ## Roadmap
 
-- GraphQL backend for scenarios and simulation runs
+- Load scenarios and record simulation runs from the Angular app through the GraphQL API
 - ESLint
 - Playwright end-to-end tests
 - GitHub Actions CI
