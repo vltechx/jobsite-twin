@@ -1,0 +1,82 @@
+export const typeDefs = `#graphql
+  type Query {
+    scenarios: [Scenario!]!
+    scenario(id: ID!): Scenario
+  }
+
+  type Mutation {
+    createScenario(input: CreateScenarioInput!): Scenario!
+    startSimulationRun(scenarioId: ID!): SimulationRun!
+    completeSimulationRun(id: ID!, durationSec: Float!, distanceM: Float!): SimulationRun!
+  }
+
+  type Scenario {
+    id: ID!
+    name: String!
+    site: Site!
+    machines: [Machine!]!
+    runs: [SimulationRun!]!
+  }
+
+  type Site {
+    id: ID!
+    name: String!
+    "The site as a GeoJSON FeatureCollection (boundary, haul road, markers), as a string."
+    geojson: String!
+  }
+
+  type Machine {
+    id: ID!
+    name: String!
+    type: MachineType!
+    speedMps: Float!
+    route: [Waypoint!]!
+  }
+
+  type Waypoint {
+    seq: Int!
+    lat: Float!
+    lon: Float!
+  }
+
+  type SimulationRun {
+    id: ID!
+    status: RunStatus!
+    startedAt: String!
+    finishedAt: String
+    durationSec: Float
+    distanceM: Float
+  }
+
+  enum MachineType {
+    HAUL_TRUCK
+    EXCAVATOR
+    DOZER
+  }
+
+  enum RunStatus {
+    PENDING
+    RUNNING
+    COMPLETED
+    FAILED
+  }
+
+  # Not in the original schema (it referenced CreateScenarioInput without defining it).
+  input CreateScenarioInput {
+    name: String!
+    siteId: ID!
+    machines: [MachineInput!]
+  }
+
+  input MachineInput {
+    name: String!
+    type: MachineType!
+    speedMps: Float!
+    route: [WaypointInput!]!
+  }
+
+  input WaypointInput {
+    lat: Float!
+    lon: Float!
+  }
+`;
