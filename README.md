@@ -1,59 +1,85 @@
-# JobsiteTwin
+# Jobsite Twin
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.29.
+A prototype construction-site digital twin built with Angular and CesiumJS.
 
-## Development server
+![Jobsite Twin screenshot](docs/screenshot.png)
 
-To start a local development server, run:
+## Features
 
-```bash
-ng serve
-```
+- **3D world terrain** of a real open-pit mine (Bingham Canyon, Utah) using Cesium World Terrain.
+- **Site features from GeoJSON** ([`src/assets/site.geojson`](src/assets/site.geojson)), clamped to the terrain: site boundary, haul road and labeled markers (stockpile, site office, haul road entrance). Click a feature to see its name in the info box. Coordinates are approximate.
+- **Animated haul truck** that drives the haul road at about 10 m/s. Waypoint heights come from the terrain (`sampleTerrainMostDetailed`), and the truck faces its direction of travel and leaves a trail.
+- **Timeline playback** that loops over the truck's trip; change speed with Cesium's clock controls.
+- **View controls**: *Follow truck* and *Site view* buttons.
+- **Coordinate helper** (development builds only): click the terrain to log latitude, longitude and height to the browser console.
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+## Tech stack
 
-## Code scaffolding
+- [Angular](https://angular.dev) 21 (standalone components, signals)
+- [CesiumJS](https://cesium.com/platform/cesiumjs/) 1.146
+- [Cesium ion](https://cesium.com/platform/cesium-ion/) for terrain and imagery
+- TypeScript 5.9
+- [Vitest](https://vitest.dev) for unit tests
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+## Setup
 
-```bash
-ng generate component component-name
-```
+### Prerequisites
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+- Node.js 22 (Angular 21 requires `^20.19`, `^22.12` or `>=24`)
+- npm 11
+- A free [Cesium ion](https://ion.cesium.com/signup) account
 
-```bash
-ng generate --help
-```
-
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
+### Install
 
 ```bash
-ng test
+npm install
 ```
 
-## Running end-to-end tests
+### Cesium ion token
 
-For end-to-end (e2e) testing, run:
+1. In Cesium ion, go to **Access Tokens → Create token**.
+2. Keep only read scopes: `assets:read` (and `geocode` if you want the search box).
+3. Under **Allowed URLs**, restrict it to `http://localhost:4200`.
+
+The token is embedded in the browser bundle, so treat it as public and keep it restricted.
+
+### Configure the environment
 
 ```bash
-ng e2e
+cp src/environments/environment.example.ts src/environments/environment.ts
 ```
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+Put your token in `environment.ts`. It is git-ignored and never committed.
 
-## Additional Resources
+### Run
 
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+```bash
+npx ng serve    # or: npm start
+```
+
+Open <http://localhost:4200>.
+
+Other commands: `npx ng build` (production build to `dist/`), `npx ng test` (unit tests).
+
+## How I built it
+
+- Developed with [Claude Code](https://claude.com/claude-code) in VS Code, guided by a `CLAUDE.md` I kept updated.
+- Reviewed every diff before accepting it.
+- Built in small PRs, one per step.
+
+## Roadmap
+
+- GraphQL backend for scenarios and simulation runs
+- ESLint
+- Playwright end-to-end tests
+- GitHub Actions CI
+
+## Credits
+
+- [CesiumJS](https://github.com/CesiumGS/cesium) — Apache License 2.0.
+- [Cesium ion](https://cesium.com/platform/cesium-ion/) — Cesium World Terrain and the default Bing Maps aerial imagery, used under the Cesium ion terms of service.
+- **CesiumMilkTruck** model © Cesium, from the [Khronos glTF Sample Assets](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CesiumMilkTruck), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Cesium trademarks and logos are excluded from that license.
+
+## License
+
+[MIT](LICENSE). Third-party assets keep their own licenses (see Credits).
