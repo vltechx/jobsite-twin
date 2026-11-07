@@ -14,10 +14,10 @@ import type { TypedDocumentNode as DocumentNode } from '@graphql-typed-document-
  * Learn more about it here: https://the-guild.dev/graphql/codegen/plugins/presets/preset-client#reducing-bundle-size
  */
 type Documents = {
-    "query Scenarios {\n  scenarios {\n    id\n    name\n  }\n}\n\nquery ScenarioDetail($id: ID!) {\n  scenario(id: $id) {\n    id\n    name\n    site {\n      id\n      name\n      geojson\n    }\n    machines {\n      id\n      name\n      type\n      speedMps\n      route {\n        seq\n        lat\n        lon\n      }\n    }\n  }\n}": typeof types.ScenariosDocument,
+    "query Scenarios {\n  scenarios {\n    id\n    name\n  }\n}\n\nquery ScenarioDetail($id: ID!) {\n  scenario(id: $id) {\n    id\n    name\n    site {\n      id\n      name\n      geojson\n    }\n    machines {\n      id\n      name\n      type\n      speedMps\n      route {\n        seq\n        lat\n        lon\n      }\n    }\n  }\n}\n\nmutation CreateScenario($input: CreateScenarioInput!) {\n  createScenario(input: $input) {\n    id\n    name\n  }\n}": typeof types.ScenariosDocument,
 };
 const documents: Documents = {
-    "query Scenarios {\n  scenarios {\n    id\n    name\n  }\n}\n\nquery ScenarioDetail($id: ID!) {\n  scenario(id: $id) {\n    id\n    name\n    site {\n      id\n      name\n      geojson\n    }\n    machines {\n      id\n      name\n      type\n      speedMps\n      route {\n        seq\n        lat\n        lon\n      }\n    }\n  }\n}": types.ScenariosDocument,
+    "query Scenarios {\n  scenarios {\n    id\n    name\n  }\n}\n\nquery ScenarioDetail($id: ID!) {\n  scenario(id: $id) {\n    id\n    name\n    site {\n      id\n      name\n      geojson\n    }\n    machines {\n      id\n      name\n      type\n      speedMps\n      route {\n        seq\n        lat\n        lon\n      }\n    }\n  }\n}\n\nmutation CreateScenario($input: CreateScenarioInput!) {\n  createScenario(input: $input) {\n    id\n    name\n  }\n}": types.ScenariosDocument,
 };
 
 /**
@@ -37,7 +37,7 @@ export function graphql(source: string): unknown;
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "query Scenarios {\n  scenarios {\n    id\n    name\n  }\n}\n\nquery ScenarioDetail($id: ID!) {\n  scenario(id: $id) {\n    id\n    name\n    site {\n      id\n      name\n      geojson\n    }\n    machines {\n      id\n      name\n      type\n      speedMps\n      route {\n        seq\n        lat\n        lon\n      }\n    }\n  }\n}"): (typeof documents)["query Scenarios {\n  scenarios {\n    id\n    name\n  }\n}\n\nquery ScenarioDetail($id: ID!) {\n  scenario(id: $id) {\n    id\n    name\n    site {\n      id\n      name\n      geojson\n    }\n    machines {\n      id\n      name\n      type\n      speedMps\n      route {\n        seq\n        lat\n        lon\n      }\n    }\n  }\n}"];
+export function graphql(source: "query Scenarios {\n  scenarios {\n    id\n    name\n  }\n}\n\nquery ScenarioDetail($id: ID!) {\n  scenario(id: $id) {\n    id\n    name\n    site {\n      id\n      name\n      geojson\n    }\n    machines {\n      id\n      name\n      type\n      speedMps\n      route {\n        seq\n        lat\n        lon\n      }\n    }\n  }\n}\n\nmutation CreateScenario($input: CreateScenarioInput!) {\n  createScenario(input: $input) {\n    id\n    name\n  }\n}"): (typeof documents)["query Scenarios {\n  scenarios {\n    id\n    name\n  }\n}\n\nquery ScenarioDetail($id: ID!) {\n  scenario(id: $id) {\n    id\n    name\n    site {\n      id\n      name\n      geojson\n    }\n    machines {\n      id\n      name\n      type\n      speedMps\n      route {\n        seq\n        lat\n        lon\n      }\n    }\n  }\n}\n\nmutation CreateScenario($input: CreateScenarioInput!) {\n  createScenario(input: $input) {\n    id\n    name\n  }\n}"];
 
 export function graphql(source: string) {
   return (documents as any)[source] ?? {};

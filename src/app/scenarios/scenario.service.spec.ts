@@ -3,7 +3,13 @@ import { TestBed } from '@angular/core/testing';
 import { ApolloTestingController, ApolloTestingModule } from 'apollo-angular/testing';
 import { firstValueFrom } from 'rxjs';
 
-import { ScenarioDetailDocument, ScenariosDocument } from '../graphql/generated/graphql';
+import { GraphQLError } from 'graphql';
+
+import {
+  CreateScenarioDocument,
+  ScenarioDetailDocument,
+  ScenariosDocument,
+} from '../graphql/generated/graphql';
 import { ScenarioService, describeApiError } from './scenario.service';
 
 describe('ScenarioService', () => {
@@ -32,6 +38,60 @@ describe('ScenarioService', () => {
     expect(op.operation.variables).toEqual({ id: 'missing' });
     op.flush({ data: { scenario: null } });
     await expect(result).rejects.toThrow('Scenario missing was not found');
+  });
+
+  it('creates a scenario with trimmed names and waypoints in drawn order', async () => {
+    const result = firstValueFrom(
+      service.createScenario('site-1', {
+        scenarioName: '  North haul ',
+        machineName: ' Truck 7',
+        machineType: 'DOZER',
+        speedMps: 6.5,
+        waypoints: [
+          { lat: 2, lon: 20 },
+          { lat: 1, lon: 10 },
+        ],
+      }),
+    );
+    const op = controller.expectOne(CreateScenarioDocument);
+    expect(op.operation.variables).toEqual({
+      input: {
+        name: 'North haul',
+        siteId: 'site-1',
+        machines: [
+          {
+            name: 'Truck 7',
+            type: 'DOZER',
+            speedMps: 6.5,
+            route: [
+              { lat: 2, lon: 20 },
+              { lat: 1, lon: 10 },
+            ],
+          },
+        ],
+      },
+    });
+    op.flush({ data: { createScenario: { __typename: 'Scenario', id: 'new', name: 'North haul' } } });
+    expect(await result).toEqual({ __typename: 'Scenario', id: 'new', name: 'North haul' });
+  });
+
+  it('surfaces server validation errors', async () => {
+    const result = firstValueFrom(
+      service.createScenario('site-1', {
+        scenarioName: 'x',
+        machineName: 'y',
+        machineType: 'HAUL_TRUCK',
+        speedMps: 1,
+        waypoints: [],
+      }),
+    );
+    controller
+      .expectOne(CreateScenarioDocument)
+      .graphqlErrors([new GraphQLError('machines[0].route needs at least 2 waypoints')]);
+    const err = await result.catch((e: unknown) => e);
+    expect(describeApiError(err)).toBe(
+      'The GraphQL API reported an error: machines[0].route needs at least 2 waypoints',
+    );
   });
 });
 

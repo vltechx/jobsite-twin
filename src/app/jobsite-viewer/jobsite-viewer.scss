@@ -49,6 +49,11 @@
 
   button {
     @extend %control;
+
+    &.active {
+      border-color: #f90;
+      background: rgba(110, 66, 0, 0.9);
+    }
   }
 }
 
@@ -94,5 +99,74 @@
   button {
     @extend %control;
     flex-shrink: 0;
+  }
+}
+
+.draw-panel {
+  position: absolute;
+  top: 52px;
+  left: 8px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 17rem;
+  max-width: calc(100% - 16px);
+  padding: 10px 12px;
+  font: 14px sans-serif;
+  color: #edffff;
+  background: rgba(40, 40, 40, 0.92);
+  border: 1px solid #f90;
+  border-radius: 4px;
+  box-sizing: border-box;
+
+  h2 {
+    margin: 0;
+    font-size: 15px;
+  }
+
+  .hint {
+    margin: 0;
+    color: #cde;
+  }
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  input,
+  select {
+    @extend %control;
+    cursor: text;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  select {
+    cursor: pointer;
+  }
+
+  .form-errors {
+    margin: 0;
+    padding: 6px 8px 6px 24px;
+    background: rgba(110, 24, 24, 0.92);
+    border: 1px solid #e66;
+    border-radius: 4px;
+  }
+
+  .actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+
+    button {
+      @extend %control;
+    }
+
+    button[type='submit'] {
+      border-color: #f90;
+    }
   }
 }
