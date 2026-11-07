@@ -1,0 +1,32 @@
+# Operations used by ScenarioService. Run `npm run codegen` after changing this file
+# or server/src/schema.graphql to regenerate src/app/graphql/generated/.
+
+query Scenarios {
+  scenarios {
+    id
+    name
+  }
+}
+
+query ScenarioDetail($id: ID!) {
+  scenario(id: $id) {
+    id
+    name
+    site {
+      id
+      name
+      geojson
+    }
+    machines {
+      id
+      name
+      type
+      speedMps
+      route {
+        seq
+        lat
+        lon
+      }
+    }
+  }
+}

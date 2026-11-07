@@ -14,10 +14,7 @@ import {
   PolygonHierarchy,
   PolylineGraphics,
   VerticalOrigin,
-  Viewer,
 } from 'cesium';
-
-const SITE_GEOJSON_URL = 'assets/site.geojson';
 
 const BOUNDARY_COLOR = Color.ORANGE;
 const HAUL_ROAD_COLOR = Color.YELLOW;
@@ -29,16 +26,14 @@ const MARKER_COLORS: Record<string, Color> = {
 
 @Injectable({ providedIn: 'root' })
 export class SiteFeaturesService {
-  /** Loads the site GeoJSON, styles it, and adds it to the viewer. */
-  async addTo(viewer: Viewer): Promise<GeoJsonDataSource | undefined> {
-    const dataSource = await GeoJsonDataSource.load(SITE_GEOJSON_URL, {
+  /**
+   * Builds a styled data source from a site's GeoJSON FeatureCollection (the
+   * Site.geojson string from the API). The caller adds it to / removes it from the viewer.
+   */
+  async create(geojson: string): Promise<GeoJsonDataSource> {
+    const dataSource = await GeoJsonDataSource.load(JSON.parse(geojson), {
       clampToGround: true,
     });
-
-    // The component may have been destroyed while the file was loading.
-    if (viewer.isDestroyed()) {
-      return undefined;
-    }
 
     const now = JulianDate.now();
     for (const entity of dataSource.entities.values) {
@@ -53,7 +48,6 @@ export class SiteFeaturesService {
       }
     }
 
-    await viewer.dataSources.add(dataSource);
     return dataSource;
   }
 
