@@ -10,31 +10,89 @@
   height: 100%;
 }
 
+// Shared look for overlay controls, matching Cesium's dark toolbar.
+%control {
+  padding: 6px 12px;
+  font: 14px sans-serif;
+  color: #edffff;
+  background: rgba(40, 40, 40, 0.8);
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: rgba(72, 72, 72, 0.9);
+    border-color: #aef;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
 .view-controls {
   position: absolute;
   top: 8px;
   left: 8px;
+  right: 8px;
   z-index: 1;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+  pointer-events: none; // let clicks through the empty part of the row
+
+  > * {
+    pointer-events: auto;
+  }
 
   button {
-    padding: 6px 12px;
-    font: 14px sans-serif;
-    color: #edffff;
-    background: rgba(40, 40, 40, 0.8);
-    border: 1px solid #444;
-    border-radius: 4px;
-    cursor: pointer;
+    @extend %control;
+  }
+}
 
-    &:hover:not(:disabled) {
-      background: rgba(72, 72, 72, 0.9);
-      border-color: #aef;
-    }
+.scenario-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 14px sans-serif;
+  color: #edffff;
 
-    &:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
+  span {
+    text-shadow: 0 1px 2px #000;
+  }
+
+  select {
+    @extend %control;
+    max-width: 16rem;
+  }
+}
+
+.status-banner {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  font: 14px sans-serif;
+  color: #edffff;
+  background: rgba(40, 40, 40, 0.9);
+  border: 1px solid #444;
+  border-radius: 4px;
+
+  &.error {
+    background: rgba(110, 24, 24, 0.92);
+    border-color: #e66;
+  }
+
+  button {
+    @extend %control;
+    flex-shrink: 0;
   }
 }

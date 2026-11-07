@@ -7,12 +7,13 @@ A prototype construction-site digital twin built with Angular and CesiumJS.
 ## Features
 
 - **3D world terrain** of a real open-pit mine (Bingham Canyon, Utah) using Cesium World Terrain.
-- **Site features from GeoJSON** ([`src/assets/site.geojson`](src/assets/site.geojson)), clamped to the terrain: site boundary, haul road and labeled markers (stockpile, site office, haul road entrance). Click a feature to see its name in the info box. Coordinates are approximate.
-- **Animated haul truck** that drives the haul road at about 10 m/s. Waypoint heights come from the terrain (`sampleTerrainMostDetailed`), and the truck faces its direction of travel and leaves a trail.
-- **Timeline playback** that loops over the truck's trip; change speed with Cesium's clock controls.
-- **View controls**: *Follow truck* and *Site view* buttons.
+- **Scenarios from a GraphQL API**: pick a scenario, and the app loads its site and machines from the backend, clears the scene, redraws it and restarts the clock. It shows loading and error states, including a clear message when the API isn't running.
+- **Site features** from the scenario's site GeoJSON, clamped to the terrain: site boundary, haul road and labeled markers (stockpile, site office, haul road entrance). Click a feature to see its name in the info box. Coordinates are approximate.
+- **Animated machines** that drive their routes at their configured speed (the seeded haul truck: 10 m/s). Routes are densified to ~5 m with heights from the terrain (`sampleTerrainMostDetailed`), and each machine faces its direction of travel and leaves a trail. All machine types currently use the same truck model.
+- **Timeline playback** that loops over the longest trip; change speed with Cesium's clock controls.
+- **View controls**: scenario picker, *Follow truck* and *Site view* buttons.
 - **Coordinate helper** (development builds only): click the terrain to log latitude, longitude and height to the browser console.
-- **GraphQL backend** ([`server/`](server/)) for scenarios, machines with routes, and simulation runs, stored in PostgreSQL/PostGIS. The Angular app doesn't use it yet; it still loads `site.geojson` directly.
+- **GraphQL backend** ([`server/`](server/)) for scenarios, machines with routes, and simulation runs, stored in PostgreSQL/PostGIS. The app reads scenarios from it; the simulation-run mutations exist in the API but the app doesn't call them yet.
 
 
 ## Architecture
@@ -22,12 +23,13 @@ flowchart TB
   subgraph Browser
     A["Angular app<br/>viewer, controls, services"]
     C["CesiumJS<br/>terrain, entities, clock"]
-    S["Static assets<br/>site.geojson, truck glTF"]
+    S["Static assets<br/>truck glTF"]
   end
   ion["Cesium ion<br/>world terrain, imagery"]
   subgraph Backend["Backend (server/)"]
     G["GraphQL server :4000<br/>Apollo Server, resolvers, DataLoader"]
-    P[("PostgreSQL + PostGIS<br/>Docker, migrations, seed")]
+    P[("PostgreSQL + PostGIS<br/>Docker, migrations")]
+    F["seed/site.geojson<br/>seed source"]
   end
   SB["Apollo Sandbox<br/>manual API testing"]
 
@@ -36,7 +38,8 @@ flowchart TB
   C -->|HTTPS + ion token| ion
   SB --> G
   G --> P
-  A -.->|planned: load scenarios| G
+  F -->|npm run seed| P
+  A -->|GraphQL over HTTP<br/>Apollo Angular| G
 ```
 
 ## Tech stack
@@ -45,6 +48,8 @@ flowchart TB
 - [CesiumJS](https://cesium.com/platform/cesiumjs/) 1.146
 - [Cesium ion](https://cesium.com/platform/cesium-ion/) for terrain and imagery
 - TypeScript 5.9
+- [Apollo Angular](https://the-guild.dev/graphql/apollo-angular) 14 + [Apollo Client](https://www.apollographql.com/docs/react) 4 for GraphQL
+- [GraphQL Code Generator](https://the-guild.dev/graphql/codegen) (client preset) for typed queries
 - [Vitest](https://vitest.dev) for unit tests
 
 **Backend** (`server/`):
@@ -82,21 +87,11 @@ The token is embedded in the browser bundle, so treat it as public and keep it r
 cp src/environments/environment.example.ts src/environments/environment.ts
 ```
 
-Put your token in `environment.ts`. It is git-ignored and never committed.
+Put your token in `environment.ts`. It is git-ignored and never committed. `graphqlUrl` points the app at the backend (default `http://localhost:4000/`).
 
-### Run
+### Backend
 
-```bash
-npx ng serve    # or: npm start
-```
-
-Open <http://localhost:4200>.
-
-Other commands: `npx ng build` (production build to `dist/`), `npx ng test` (unit tests).
-
-### Backend (optional)
-
-Requires [Docker](https://www.docker.com/products/docker-desktop/) for the local database. The `postgis/postgis` image is amd64-only; on Apple Silicon, Docker Desktop runs it under emulation.
+The app loads its scenarios from the GraphQL server, so start the backend first. It requires [Docker](https://www.docker.com/products/docker-desktop/) for the local database. The `postgis/postgis` image is amd64-only; on Apple Silicon, Docker Desktop runs it under emulation.
 
 ```bash
 cd server
@@ -104,7 +99,7 @@ npm install
 cp .env.example .env    # then set a password in POSTGRES_PASSWORD and DATABASE_URL
 npm run db:up           # start PostgreSQL + PostGIS (docker compose)
 npm run migrate         # apply migrations/*.sql
-npm run seed            # import src/assets/site.geojson as a scenario with a haul truck
+npm run seed            # import seed/site.geojson as a scenario with a haul truck
 npm run dev             # GraphQL server with reload at http://localhost:4000
 ```
 
@@ -125,6 +120,18 @@ Other scripts: `npm start` (no reload), `npm run typecheck`, `npm run db:down`. 
 
 To query the database directly, open a `psql` shell in the container with `npm run db:psql`, or run one statement with `npm run db:psql -- -c "SELECT * FROM scenario;"`. Wrap geometry columns in `ST_AsText(...)` to make them readable.
 
+### Run the app
+
+In a second terminal, from the repo root:
+
+```bash
+npx ng serve    # or: npm start
+```
+
+Open <http://localhost:4200>. If the backend isn't running, the app shows "Can't reach the GraphQL API" with a Retry button.
+
+Other commands: `npx ng build` (production build to `dist/`), `npx ng test` (unit tests), `npm run codegen` (regenerate typed queries in `src/app/graphql/generated/` after changing `src/app/**/*.graphql` or `server/src/schema.graphql`).
+
 ## How I built it
 
 - Developed with [Claude Code](https://claude.com/claude-code) in VS Code, guided by a `CLAUDE.md` I kept updated.
@@ -133,7 +140,8 @@ To query the database directly, open a `psql` shell in the container with `npm r
 
 ## Roadmap
 
-- Load scenarios and record simulation runs from the Angular app through the GraphQL API
+- Record simulation runs from the app (`startSimulationRun` / `completeSimulationRun`)
+- Distinct 3D models per machine type
 - ESLint
 - Playwright end-to-end tests
 - GitHub Actions CI

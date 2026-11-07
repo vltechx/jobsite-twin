@@ -1,10 +1,10 @@
-// Imports src/assets/site.geojson as one site + one scenario with a haul truck that
+// Imports server/seed/site.geojson as one site + one scenario with a haul truck that
 // follows the haul road. Safe to re-run: the seeded site and its scenarios are replaced.
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { pool, withTransaction } from '../db.js';
 
-const GEOJSON_PATH = fileURLToPath(new URL('../../../src/assets/site.geojson', import.meta.url));
+const GEOJSON_PATH = fileURLToPath(new URL('../../seed/site.geojson', import.meta.url));
 
 const SITE_NAME = 'Bingham Canyon Mine';
 const SCENARIO_NAME = 'Baseline haul cycle';

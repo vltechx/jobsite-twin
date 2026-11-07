@@ -2,8 +2,8 @@ import { Injectable } from '@angular/core';
 import {
   Cartesian3,
   Cartographic,
-  ClockRange,
   Color,
+  CustomDataSource,
   Entity,
   HeightReference,
   JulianDate,
@@ -16,67 +16,72 @@ import {
   TimeInterval,
   TimeIntervalCollection,
   VelocityOrientationProperty,
-  Viewer,
 } from 'cesium';
+import type { MachineData } from '../scenarios/scenario.service';
 
-const SITE_GEOJSON_URL = 'assets/site.geojson';
 const TRUCK_MODEL_URL = 'assets/models/CesiumMilkTruck.glb';
-const TRUCK_SPEED_MPS = 10;
 /** Spacing of densified road points; close to the finest terrain mesh spacing. */
 const DENSIFY_SPACING_M = 5;
 /** Raises samples slightly so the trail doesn't flicker in and out of the terrain. */
 const TRAIL_LIFT_M = 1;
 
-interface SiteFeatureCollection {
-  features: {
-    properties?: { type?: string };
-    geometry: { type: string; coordinates: unknown };
-  }[];
-}
-
 @Injectable({ providedIn: 'root' })
 export class HaulTruckService {
   /**
-   * Adds a truck that drives the haul road on a loop and points the viewer clock at
-   * the trip. Resolves to the truck entity, or undefined if the viewer was destroyed
-   * while loading.
+   * Adds a machine that drives its route (ordered by seq) at its speed, starting at
+   * `start`. Resolves to the entity and trip duration, or undefined if the route has
+   * fewer than 2 points or the target was removed while terrain heights were loading.
    */
-  async addTo(viewer: Viewer, terrain: Terrain): Promise<Entity | undefined> {
-    // 1. Haul road coordinates from the GeoJSON.
-    const lonLats = await this.loadHaulRoad();
+  async addMachine(
+    target: CustomDataSource,
+    terrain: Terrain,
+    machine: MachineData,
+    start: JulianDate,
+    isStale: () => boolean,
+  ): Promise<{ entity: Entity; durationSec: number } | undefined> {
+    // 1. Route from the API, ordered by seq.
+    const lonLats = [...machine.route]
+      .sort((a, b) => a.seq - b.seq)
+      .map((w): [number, number] => [w.lon, w.lat]);
+    if (lonLats.length < 2) {
+      return undefined;
+    }
 
     // 2. Densify to a point every ~5 m, then get terrain heights for all of them in
     //    one call, so straight lines between samples follow the ground.
     const terrainProvider = await whenTerrainReady(terrain);
     const cartographics = densify(lonLats, DENSIFY_SPACING_M);
     await sampleTerrainMostDetailed(terrainProvider, cartographics);
-    if (viewer.isDestroyed()) {
+    if (isStale()) {
       return undefined;
     }
     const waypoints = cartographics.map((c) =>
       Cartesian3.fromRadians(c.longitude, c.latitude, (c.height ?? 0) + TRAIL_LIFT_M),
     );
 
-    // 3. One sample per densified point, timed by distance at constant speed.
-    const start = JulianDate.now();
+    // 3. One sample per densified point, timed by distance at the machine's speed.
     const position = new SampledPositionProperty();
     let elapsedSeconds = 0;
     waypoints.forEach((point, i) => {
       if (i > 0) {
-        elapsedSeconds += Cartesian3.distance(waypoints[i - 1], point) / TRUCK_SPEED_MPS;
+        elapsedSeconds += Cartesian3.distance(waypoints[i - 1], point) / machine.speedMps;
       }
       position.addSample(JulianDate.addSeconds(start, elapsedSeconds, new JulianDate()), point);
     });
     const stop = JulianDate.addSeconds(start, elapsedSeconds, new JulianDate());
 
-    // 4. Truck entity facing its direction of travel, with a trail.
-    const truck = viewer.entities.add({
-      name: 'Haul Truck',
-      description: `<p>Drives the main haul road at about ${TRUCK_SPEED_MPS} m/s.</p>`,
+    // 4. Entity facing its direction of travel, with a trail.
+    const entity = target.entities.add({
+      id: `machine-${machine.id}`,
+      name: machine.name,
+      description:
+        `<p>${escapeHtml(machine.type.replace('_', ' ').toLowerCase())}, ` +
+        `about ${machine.speedMps} m/s.</p>`,
       availability: new TimeIntervalCollection([new TimeInterval({ start, stop })]),
       position,
       orientation: new VelocityOrientationProperty(position),
       model: {
+        // Only one model is available, so every machine type uses the truck for now.
         uri: TRUCK_MODEL_URL,
         minimumPixelSize: 48,
         // Samples are lifted TRAIL_LIFT_M for the trail; clamping keeps the wheels
@@ -92,33 +97,12 @@ export class HaulTruckService {
       },
     });
 
-    // 5. Clock covers the trip and loops; speed is adjustable in the animation widget.
-    const clock = viewer.clock;
-    clock.startTime = start.clone();
-    clock.stopTime = stop.clone();
-    clock.currentTime = start.clone();
-    clock.clockRange = ClockRange.LOOP_STOP;
-    clock.multiplier = 1;
-    clock.shouldAnimate = true;
-    viewer.timeline?.zoomTo(start, stop);
-
-    return truck;
+    return { entity, durationSec: elapsedSeconds };
   }
+}
 
-  private async loadHaulRoad(): Promise<[number, number][]> {
-    const response = await fetch(SITE_GEOJSON_URL);
-    if (!response.ok) {
-      throw new Error(`Failed to load ${SITE_GEOJSON_URL}: ${response.status}`);
-    }
-    const geojson = (await response.json()) as SiteFeatureCollection;
-    const road = geojson.features.find(
-      (f) => f.properties?.type === 'haul-road' && f.geometry.type === 'LineString',
-    );
-    if (!road) {
-      throw new Error('No haul-road LineString found in site.geojson');
-    }
-    return road.geometry.coordinates as [number, number][];
-  }
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**

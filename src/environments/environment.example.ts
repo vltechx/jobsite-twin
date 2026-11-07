@@ -3,4 +3,6 @@
 // Get a token at https://ion.cesium.com/tokens
 export const environment = {
   cesiumIonToken: 'YOUR_CESIUM_ION_TOKEN',
+  // GraphQL API (server/). Start it with: cd server && npm run dev
+  graphqlUrl: 'http://localhost:4000/',
 };
