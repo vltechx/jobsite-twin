@@ -29,6 +29,13 @@ import {
 import { Subscription } from 'rxjs';
 
 import { environment } from '../../environments/environment';
+import type { MachineType } from '../graphql/generated/graphql';
+import {
+  MACHINE_TYPE_LABELS,
+  MACHINE_TYPES,
+  validateRouteDraft,
+  type RouteDraft,
+} from '../scenarios/route-draft';
 import {
   ScenarioService,
   describeApiError,
@@ -36,6 +43,7 @@ import {
   type ScenarioSummary,
 } from '../scenarios/scenario.service';
 import { HaulTruckService } from './haul-truck.service';
+import { RouteDrawer } from './route-drawer';
 import { SiteFeaturesService } from './site-features.service';
 
 const JOBSITE = {
@@ -54,7 +62,10 @@ type LoadStatus = 'loading' | 'ready' | 'error';
     <div class="view-controls">
       <label class="scenario-picker">
         <span>Scenario</span>
-        <select (change)="onScenarioChange($event)" [disabled]="scenarios().length === 0">
+        <select
+          (change)="onScenarioChange($event)"
+          [disabled]="scenarios().length === 0 || drawing()"
+        >
           @for (s of scenarios(); track s.id) {
             <option [value]="s.id" [selected]="s.id === selectedId()">{{ s.name }}</option>
           }
@@ -62,7 +73,81 @@ type LoadStatus = 'loading' | 'ready' | 'error';
       </label>
       <button type="button" (click)="followTruck()" [disabled]="!truck()">Follow truck</button>
       <button type="button" (click)="showSite()">Site view</button>
+      <button
+        type="button"
+        (click)="toggleDrawing()"
+        [disabled]="!siteId() || saving()"
+        [class.active]="drawing()"
+        [attr.aria-pressed]="drawing()"
+      >
+        Draw route
+      </button>
     </div>
+
+    @if (drawing()) {
+      <form
+        class="draw-panel"
+        (submit)="saveRoute($event)"
+        (input)="drawErrors.set([])"
+        (change)="drawErrors.set([])"
+        novalidate
+      >
+        <h2>New scenario</h2>
+        <p class="hint">
+          Click the terrain to add waypoints ({{ pointCount() }} so far). Esc cancels.
+        </p>
+        <label>
+          Scenario name
+          <input
+            [value]="scenarioName()"
+            (input)="scenarioName.set(inputValue($event))"
+            maxlength="100"
+          />
+        </label>
+        <label>
+          Machine name
+          <input
+            [value]="machineName()"
+            (input)="machineName.set(inputValue($event))"
+            maxlength="100"
+          />
+        </label>
+        <label>
+          Machine type
+          <select (change)="machineType.set($any(inputValue($event)))">
+            @for (t of machineTypes; track t) {
+              <option [value]="t" [selected]="t === machineType()">
+                {{ machineTypeLabels[t] }}
+              </option>
+            }
+          </select>
+        </label>
+        <label>
+          Speed (m/s)
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            [value]="speed()"
+            (input)="speed.set(inputValue($event))"
+          />
+        </label>
+        @if (drawErrors().length > 0) {
+          <ul class="form-errors" role="alert">
+            @for (e of drawErrors(); track $index) {
+              <li>{{ e }}</li>
+            }
+          </ul>
+        }
+        <div class="actions">
+          <button type="button" (click)="undoPoint()" [disabled]="pointCount() === 0 || saving()">
+            Undo
+          </button>
+          <button type="button" (click)="cancelDrawing()" [disabled]="saving()">Cancel</button>
+          <button type="submit" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save' }}</button>
+        </div>
+      </form>
+    }
 
     @if (status() === 'loading') {
       <div class="status-banner" role="status">{{ message() }}</div>
@@ -74,6 +159,7 @@ type LoadStatus = 'loading' | 'ready' | 'error';
     }
   `,
   styleUrl: './jobsite-viewer.scss',
+  host: { '(document:keydown.escape)': 'onEscape()' },
 })
 export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
   private readonly container = viewChild.required<ElementRef<HTMLDivElement>>('container');
@@ -87,11 +173,28 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
   protected readonly status = signal<LoadStatus>('loading');
   protected readonly message = signal('Loading scenarios…');
   protected readonly truck = signal<Entity | undefined>(undefined);
+  /** Site of the loaded scenario; new scenarios are created on it. */
+  protected readonly siteId = signal<string | null>(null);
+
+  // Draw-route mode
+  protected readonly machineTypes = MACHINE_TYPES;
+  protected readonly machineTypeLabels = MACHINE_TYPE_LABELS;
+  protected readonly drawing = signal(false);
+  protected readonly pointCount = signal(0);
+  protected readonly scenarioName = signal('');
+  protected readonly machineName = signal('Haul truck');
+  protected readonly machineType = signal<MachineType>('HAUL_TRUCK');
+  /** Kept as typed text; parsed and validated on save. */
+  protected readonly speed = signal('8');
+  protected readonly drawErrors = signal<string[]>([]);
+  protected readonly saving = signal(false);
 
   private viewer?: Viewer;
   private terrain?: Terrain;
   private clickHandler?: ScreenSpaceEventHandler;
   private request?: Subscription;
+  private saveRequest?: Subscription;
+  private drawer?: RouteDrawer;
   /** What Retry should redo. */
   private failedStep: 'list' | 'scenario' = 'list';
   /** Incremented per scenario load; async work from an older load is discarded. */
@@ -150,7 +253,93 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  private loadScenarioList(): void {
+  protected toggleDrawing(): void {
+    if (this.drawing()) {
+      this.cancelDrawing();
+    } else {
+      this.startDrawing();
+    }
+  }
+
+  protected undoPoint(): void {
+    this.drawer?.undo();
+  }
+
+  protected cancelDrawing(): void {
+    if (this.saving()) return;
+    this.stopDrawing();
+  }
+
+  protected onEscape(): void {
+    if (this.drawing()) {
+      this.cancelDrawing();
+    }
+  }
+
+  protected inputValue(event: Event): string {
+    return (event.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  /** Validates the draft, creates the scenario, then loads and plays it. */
+  protected saveRoute(event: Event): void {
+    event.preventDefault();
+    const siteId = this.siteId();
+    if (!this.drawer || !siteId || this.saving()) return;
+
+    const draft: RouteDraft = {
+      scenarioName: this.scenarioName(),
+      machineName: this.machineName(),
+      machineType: this.machineType(),
+      speedMps: this.speed().trim() === '' ? NaN : Number(this.speed()),
+      waypoints: this.drawer.waypoints(),
+    };
+    const errors = validateRouteDraft(draft);
+    this.drawErrors.set(errors);
+    if (errors.length > 0) return;
+
+    this.saving.set(true);
+    this.saveRequest = this.scenarioService.createScenario(siteId, draft).subscribe({
+      next: (created) => {
+        this.saving.set(false);
+        this.stopDrawing();
+        this.scenarioName.set('');
+        this.loadScenarioList(created.id);
+      },
+      error: (err) => {
+        this.saving.set(false);
+        this.drawErrors.set([`Couldn't save: ${describeApiError(err)}`]);
+      },
+    });
+  }
+
+  private startDrawing(): void {
+    const viewer = this.viewer;
+    if (!viewer || viewer.isDestroyed() || this.drawer) return;
+    // Stop following the truck so the camera holds still while clicking.
+    viewer.trackedEntity = undefined;
+    // The dev coordinate logger would also fire on every waypoint click.
+    this.destroyCoordinateLogger();
+    this.drawErrors.set([]);
+    this.pointCount.set(0);
+    this.drawer = new RouteDrawer(viewer, (count) => this.pointCount.set(count));
+    this.drawing.set(true);
+  }
+
+  private stopDrawing(): void {
+    this.saveRequest?.unsubscribe();
+    this.saving.set(false);
+    this.drawer?.destroy();
+    this.drawer = undefined;
+    this.drawing.set(false);
+    this.pointCount.set(0);
+    this.drawErrors.set([]);
+    if (isDevMode() && this.viewer && !this.viewer.isDestroyed() && !this.clickHandler) {
+      this.clickHandler = this.createCoordinateLogger(this.viewer);
+    }
+  }
+
+  /** Loads the list, then selects `preferredId`, the current scenario, or the first. */
+  private loadScenarioList(preferredId?: string): void {
     this.setLoading('Loading scenarios…');
     this.request?.unsubscribe();
     this.request = this.scenarioService.listScenarios().subscribe({
@@ -163,9 +352,14 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
           );
           return;
         }
-        // Keep the current selection if it still exists, otherwise take the first.
+        const exists = (id: string | null | undefined): id is string =>
+          !!id && scenarios.some((s) => s.id === id);
         const current = this.selectedId();
-        const next = scenarios.some((s) => s.id === current) ? current! : scenarios[0].id;
+        const next = exists(preferredId)
+          ? preferredId
+          : exists(current)
+            ? current
+            : scenarios[0].id;
         this.loadScenario(next);
       },
       error: (err) => this.setError('list', describeApiError(err)),
@@ -180,12 +374,14 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
 
     this.request?.unsubscribe();
     this.request = this.scenarioService.getScenario(id).subscribe({
-      next: (scenario) =>
+      next: (scenario) => {
+        this.siteId.set(scenario.site.id);
         this.drawScenario(scenario, generation).catch((err) => {
           if (generation === this.loadGeneration) {
             this.setError('scenario', `Couldn't draw scenario: ${describeApiError(err)}`);
           }
-        }),
+        });
+      },
       error: (err) => this.setError('scenario', describeApiError(err)),
     });
   }
@@ -297,14 +493,21 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
     return handler;
   }
 
-  ngOnDestroy(): void {
-    this.request?.unsubscribe();
-    this.loadGeneration++; // discard any in-flight draw
-
+  private destroyCoordinateLogger(): void {
     if (this.clickHandler && !this.clickHandler.isDestroyed()) {
       this.clickHandler.destroy();
     }
     this.clickHandler = undefined;
+  }
+
+  ngOnDestroy(): void {
+    this.request?.unsubscribe();
+    this.saveRequest?.unsubscribe();
+    this.loadGeneration++; // discard any in-flight draw
+
+    this.drawer?.destroy();
+    this.drawer = undefined;
+    this.destroyCoordinateLogger();
 
     this.truck.set(undefined);
     if (this.viewer && !this.viewer.isDestroyed()) {

@@ -6,11 +6,13 @@ import { Observable, map } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import {
+  CreateScenarioDocument,
   ScenarioDetailDocument,
   ScenariosDocument,
   type ScenarioDetailQuery,
   type ScenariosQuery,
 } from '../graphql/generated/graphql';
+import type { RouteDraft } from './route-draft';
 
 // Types derived from the generated query results (see scenarios.graphql, npm run codegen).
 export type ScenarioSummary = ScenariosQuery['scenarios'][number];
@@ -39,6 +41,37 @@ export class ScenarioService {
         return scenario;
       }),
     );
+  }
+
+  /** Creates a scenario on `siteId` with the draft's machine; waypoints keep their order. */
+  createScenario(siteId: string, draft: RouteDraft): Observable<ScenarioSummary> {
+    return this.apollo
+      .mutate({
+        mutation: CreateScenarioDocument,
+        variables: {
+          input: {
+            name: draft.scenarioName.trim(),
+            siteId,
+            machines: [
+              {
+                name: draft.machineName.trim(),
+                type: draft.machineType,
+                speedMps: draft.speedMps,
+                route: draft.waypoints.map(({ lat, lon }) => ({ lat, lon })),
+              },
+            ],
+          },
+        },
+      })
+      .pipe(
+        map((result) => {
+          const created = result.data?.createScenario;
+          if (!created) {
+            throw new Error('The GraphQL API did not return the new scenario.');
+          }
+          return created;
+        }),
+      );
   }
 }
 

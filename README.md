@@ -10,10 +10,11 @@ A prototype construction-site digital twin built with Angular and CesiumJS.
 - **Scenarios from a GraphQL API**: pick a scenario, and the app loads its site and machines from the backend, clears the scene, redraws it and restarts the clock. It shows loading and error states, including a clear message when the API isn't running.
 - **Site features** from the scenario's site GeoJSON, clamped to the terrain: site boundary, haul road and labeled markers (stockpile, site office, haul road entrance). Click a feature to see its name in the info box. Coordinates are approximate.
 - **Animated machines** that drive their routes at their configured speed (the seeded haul truck: 10 m/s). Routes are densified to ~5 m with heights from the terrain (`sampleTerrainMostDetailed`), and each machine faces its direction of travel and leaves a trail. All machine types currently use the same truck model.
+- **Draw route**: toggle draw mode, click the terrain to place waypoints (shown as points with a ground-clamped line), use *Undo* to remove the last one and *Cancel* or Esc to leave. Enter a scenario name, machine name, machine type and speed, then *Save*. This creates a new scenario on the current site through the `createScenario` mutation, selects it and plays it. The form checks for at least 2 points, both names and a speed above 0 before sending, and shows any server error. The coordinate helper is off while drawing.
 - **Timeline playback** that loops over the longest trip; change speed with Cesium's clock controls.
-- **View controls**: scenario picker, *Follow truck* and *Site view* buttons.
+- **View controls**: scenario picker, *Follow truck*, *Site view* and *Draw route* buttons.
 - **Coordinate helper** (development builds only): click the terrain to log latitude, longitude and height to the browser console.
-- **GraphQL backend** ([`server/`](server/)) for scenarios, machines with routes, and simulation runs, stored in PostgreSQL/PostGIS. The app reads scenarios from it; the simulation-run mutations exist in the API but the app doesn't call them yet.
+- **GraphQL backend** ([`server/`](server/)) for scenarios, machines with routes, and simulation runs, stored in PostgreSQL/PostGIS. The app reads scenarios from it and creates new ones with *Draw route*; the simulation-run mutations exist in the API but the app doesn't call them yet.
 
 
 ## Architecture
