@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 // The Jobsite Twin repo root: this file is <repo>/agent-lab/src/tools.ts.
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 const MAX_BYTES = 100_000;
 const MAX_MATCHES = 50;
@@ -207,7 +207,26 @@ export async function editFile(requested: string, oldText: string, newText: stri
   return `Edited ${requested}: replaced 1 occurrence.`;
 }
 
-export function runTests(): Promise<string> {
+export async function runTests(): Promise<string> {
+  const { exitCode, timedOut, output } = await runTestSuite();
+  const tail = output.trimEnd().split("\n").slice(-TEST_TAIL_LINES).join("\n");
+  const status = timedOut
+    ? `timed out after ${TEST_TIMEOUT_MS / 60_000} minutes and was stopped`
+    : `exit code: ${exitCode}`;
+  // A failing test run is a normal result for the model to read, not a tool error.
+  return `${status}\n--- last ${TEST_TAIL_LINES} lines of output ---\n${tail}`;
+}
+
+export interface TestSuiteResult {
+  /** Process exit code, or the signal name if it was killed. */
+  exitCode: number | string | null;
+  timedOut: boolean;
+  /** Full stdout + stderr, ANSI codes stripped. */
+  output: string;
+}
+
+/** Runs `npx ng test --watch=false` from the repo root (used by run_tests and by evals). */
+export function runTestSuite(): Promise<TestSuiteResult> {
   return new Promise((resolve, reject) => {
     // The tests don't need the API key, so don't hand it to them.
     const { ANTHROPIC_API_KEY: _apiKey, ...env } = process.env;
@@ -240,12 +259,7 @@ export function runTests(): Promise<string> {
 
     child.on("close", (code, signal) => {
       clearTimeout(timer);
-      const tail = stripAnsi(output).trimEnd().split("\n").slice(-TEST_TAIL_LINES).join("\n");
-      const status = timedOut
-        ? `timed out after ${TEST_TIMEOUT_MS / 60_000} minutes and was stopped`
-        : `exit code: ${code ?? signal}`;
-      // A failing test run is a normal result for the model to read, not a tool error.
-      resolve(`${status}\n--- last ${TEST_TAIL_LINES} lines of output ---\n${tail}`);
+      resolve({ exitCode: code ?? signal, timedOut, output: stripAnsi(output) });
     });
   });
 }

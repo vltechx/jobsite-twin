@@ -9,14 +9,39 @@ not part of the Angular build or the GraphQL server.
 
 ## Status
 
-Step 5: `src/index.ts` runs an agent loop on Claude (`claude-sonnet-5-5`) for a
-fixed task — "A unit test in the Angular app is failing. Run the tests, find
-the bug in the application code and fix it. Don't change any test files. Run
-the tests again to confirm the fix." Each turn it sends the conversation and the tools (`src/tools.ts`); when
-the model asks for a tool, it runs it, appends the result, and loops; at
-`end_turn` it prints the final answer. It stops after 10 turns, or on any other
-stop reason (such as a refusal). Each tool call is printed with its turn number
-and input; a failing tool is reported back to the model as an error result.
+Step 6: `src/agent.ts` exports `runAgent(task)`, an agent loop on Claude
+(`claude-sonnet-5-5`). Each turn it sends the conversation and the tools
+(`src/tools.ts`); when the model asks for a tool, it runs it, appends the
+result, and loops; at `end_turn` it returns the final answer. It stops after 10
+turns, or on any other stop reason (such as a refusal). Each tool call is logged
+with its turn number and input; a failing tool is reported back to the model as
+an error result. `runAgent` returns the final answer, outcome, turns, every tool
+call, input and output tokens, and the time taken.
+
+`npm start` (`src/index.ts`) runs it once on a fixed task — "A unit test in the
+Angular app is failing. Run the tests, find the bug in the application code and
+fix it. Don't change any test files. Run the tests again to confirm the fix." —
+and `npm run eval` runs it as an eval (below).
+
+## Evals
+
+`npm run eval` runs each task in `evals/tasks/` 3 times (`npm run eval -- --trials 1`
+for one): setup → `runAgent` → check → reset.
+
+- It refuses to start unless the whole repo's git working tree is clean, because
+  reset uses `git checkout`.
+- Reset runs even when a trial fails or throws, and on Ctrl-C. After each trial,
+  any other tracked file the agent changed is restored and listed in the results
+  (`strayEdits`); a new untracked file stops the run.
+- Results, including every tool call, go to `evals/results/<timestamp>.json`
+  (git-ignored). A summary table prints pass rate, average turns, average input /
+  output tokens and average time per task.
+
+| Task | Setup | Check |
+| --- | --- | --- |
+| `latlon-swap` | Swaps `lat` and `lon` in the route `createScenario` sends (`src/app/scenarios/scenario.service.ts`) | `npx ng test --watch=false` exits 0 |
+
+Each trial makes real API calls and runs the Angular tests several times.
 
 ## Tools
 
