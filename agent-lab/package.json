@@ -1,0 +1,17 @@
+{
+  "name": "agent-lab",
+  "version": "0.1.0",
+  "description": "Learning project: a minimal agent harness in TypeScript on the Anthropic SDK",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
