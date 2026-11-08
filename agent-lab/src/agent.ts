@@ -12,6 +12,11 @@ const client = new Anthropic();
 export const MODEL = "claude-sonnet-5-5";
 export const MAX_TURNS = 10;
 
+/** Optional system prompt (the eval runner's "guided" variant). */
+export const GUIDED_SYSTEM_PROMPT =
+  "Work efficiently. Start by running the tests. When you investigate, read the related code and its test " +
+  "together in one turn, and batch independent tool calls. After a fix, run the tests once to confirm.";
+
 export interface ToolCallRecord {
   turn: number;
   name: string;
@@ -40,6 +45,8 @@ export interface RunAgentOptions {
   log?: (line: string) => void;
   /** Stop after this many model calls without a final answer. Defaults to MAX_TURNS. */
   maxTurns?: number;
+  /** System prompt; when omitted, the request has none. */
+  system?: string;
 }
 
 /**
@@ -82,6 +89,8 @@ export async function runAgent(task: string, options: RunAgentOptions = {}): Pro
       // fallback model it picks, inside the same call.
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
+      // Only sent when set, so a run without one is the same request as before.
+      ...(options.system ? { system: options.system } : {}),
       tools,
       messages,
     });

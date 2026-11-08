@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify, parseArgs } from "node:util";
 
-import { MAX_TURNS, MODEL, runAgent, type AgentResult } from "../src/agent.js";
+import { GUIDED_SYSTEM_PROMPT, MAX_TURNS, MODEL, runAgent, type AgentResult } from "../src/agent.js";
 import { REPO_ROOT } from "../src/tools.js";
 import { graphqlErrorsVague } from "./tasks/graphql-errors-vague.js";
 import { latlonSwap } from "./tasks/latlon-swap.js";
@@ -13,8 +13,15 @@ import { timeoutMessage } from "./tasks/timeout-message.js";
 import type { CheckResult, EvalTask } from "./types.js";
 
 // Eval runner: for each task, N times: setup -> runAgent -> check -> reset.
-// Usage: npm run eval [-- [task-id ...] [--trials N] [--max-turns N]]   (no task ids = all tasks)
+// Usage: npm run eval [-- [task-id ...] [--trials N] [--max-turns N] [--variant baseline|guided]]
+// (no task ids = all tasks)
 const ALL_TASKS: EvalTask[] = [latlonSwap, timeoutMessage, graphqlErrorsVague];
+
+// Harness variants: the system prompt each one sends (baseline sends none).
+const VARIANTS: Record<string, string | undefined> = {
+  baseline: undefined,
+  guided: GUIDED_SYSTEM_PROMPT,
+};
 
 const execFileAsync = promisify(execFile);
 const RESULTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "results");
@@ -34,6 +41,7 @@ const { values, positionals } = parseArgs({
   options: {
     trials: { type: "string", default: "3" },
     "max-turns": { type: "string", default: String(MAX_TURNS) },
+    variant: { type: "string", default: "baseline" },
   },
   allowPositionals: true,
 });
@@ -48,6 +56,13 @@ function positiveInt(flag: string, raw: string): number {
 }
 const trials = positiveInt("--trials", values.trials);
 const maxTurns = positiveInt("--max-turns", values["max-turns"]);
+
+const variant = values.variant;
+if (!Object.hasOwn(VARIANTS, variant)) {
+  console.error(`--variant must be one of: ${Object.keys(VARIANTS).join(", ")} (got ${variant})`);
+  process.exit(1);
+}
+const systemPrompt = VARIANTS[variant];
 
 const unknown = positionals.filter((id) => !ALL_TASKS.some((t) => t.id === id));
 if (unknown.length > 0) {
@@ -93,7 +108,7 @@ for (const task of TASKS) {
     activeTask = task;
     try {
       await task.setup();
-      result.agent = await runAgent(task.prompt, { maxTurns, log: (line) => console.log(`  ${line}`) });
+      result.agent = await runAgent(task.prompt, { maxTurns, system: systemPrompt, log: (line) => console.log(`  ${line}`) });
       result.check = await task.check();
       result.passed = result.check.passed;
     } catch (error) {
@@ -138,7 +153,20 @@ await mkdir(RESULTS_DIR, { recursive: true });
 const file = path.join(RESULTS_DIR, `${startedAt.toISOString().replace(/[:.]/g, "-")}.json`);
 await writeFile(
   file,
-  JSON.stringify({ startedAt: startedAt.toISOString(), model: MODEL, maxTurns, trialsPerTask: trials, aborted, results }, null, 2) + "\n",
+  JSON.stringify(
+    {
+      startedAt: startedAt.toISOString(),
+      model: MODEL,
+      variant,
+      systemPrompt: systemPrompt ?? null,
+      maxTurns,
+      trialsPerTask: trials,
+      aborted,
+      results,
+    },
+    null,
+    2,
+  ) + "\n",
 );
 
 // 3. Summary table. Averages cover trials where the agent ran to completion.
@@ -159,7 +187,7 @@ const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].l
 const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i])).join(" | ");
 console.log(`\n${line(header)}\n${widths.map((w) => "-".repeat(w)).join("-|-")}`);
 for (const row of rows) console.log(line(row));
-console.log(`\nModel ${MODEL}, max ${maxTurns} turns, ${trials} trial(s) per task. Results: ${path.relative(process.cwd(), file)}`);
+console.log(`\nModel ${MODEL}, variant ${variant}, max ${maxTurns} turns, ${trials} trial(s) per task. Results: ${path.relative(process.cwd(), file)}`);
 
 if (aborted) {
   console.error(`\nStopped early: ${aborted}`);

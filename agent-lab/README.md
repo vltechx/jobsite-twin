@@ -28,8 +28,18 @@ and `npm run eval` runs it as an eval (below).
 `npm run eval` runs every task 3 times: setup → `runAgent` → check → reset.
 Name tasks to run only those, set the trial count with `--trials`, and the
 agent's turn limit with `--max-turns` (default 10), e.g.
-`npm run eval -- timeout-message --trials 1 --max-turns 3`. The turn limit is
-saved in the results file and shown under the summary table.
+`npm run eval -- timeout-message --trials 1 --max-turns 3`.
+
+`--variant` picks the harness setup to compare:
+
+- `baseline` (default): no system prompt.
+- `guided`: adds a system prompt — "Work efficiently. Start by running the
+  tests. When you investigate, read the related code and its test together in
+  one turn, and batch independent tool calls. After a fix, run the tests once
+  to confirm."
+
+The variant (and its system prompt) and the turn limit are saved in the results
+file and shown under the summary table.
 
 - It refuses to start unless the whole repo's git working tree is clean, because
   reset uses `git checkout`.
