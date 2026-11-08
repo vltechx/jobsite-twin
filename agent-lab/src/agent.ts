@@ -3,7 +3,7 @@ import { runTool, tools } from "./tools.js";
 
 // The agent loop. Send the conversation and tools; when the model asks for
 // tools, run them, append the results, and go again; stop at a final answer
-// (end_turn), any other stop reason, or after MAX_TURNS.
+// (end_turn), any other stop reason, or after maxTurns (default MAX_TURNS).
 //
 // Credentials come from the environment: ANTHROPIC_API_KEY (e.g. from .env),
 // or an `ant auth login` profile.
@@ -38,6 +38,8 @@ export interface AgentResult {
 export interface RunAgentOptions {
   /** Progress lines (one per tool call, etc.). Defaults to console.log. */
   log?: (line: string) => void;
+  /** Stop after this many model calls without a final answer. Defaults to MAX_TURNS. */
+  maxTurns?: number;
 }
 
 /**
@@ -46,6 +48,7 @@ export interface RunAgentOptions {
  */
 export async function runAgent(task: string, options: RunAgentOptions = {}): Promise<AgentResult> {
   const log = options.log ?? console.log;
+  const maxTurns = options.maxTurns ?? MAX_TURNS;
   const started = performance.now();
 
   // The whole conversation, resent every turn (the API is stateless). Only ever
@@ -71,7 +74,7 @@ export async function runAgent(task: string, options: RunAgentOptions = {}): Pro
     durationMs: Math.round(performance.now() - started),
   });
 
-  for (let turn = 1; turn <= MAX_TURNS; turn++) {
+  for (let turn = 1; turn <= maxTurns; turn++) {
     const response = await client.beta.messages.create({
       model: MODEL,
       max_tokens: 16000,
@@ -138,6 +141,6 @@ export async function runAgent(task: string, options: RunAgentOptions = {}): Pro
     }
   }
 
-  log(`Stopped: no final answer after ${MAX_TURNS} turns.`);
-  return finish("max_turns", MAX_TURNS, "tool_use");
+  log(`Stopped: no final answer after ${maxTurns} turns.`);
+  return finish("max_turns", maxTurns, "tool_use");
 }

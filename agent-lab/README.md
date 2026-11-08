@@ -26,8 +26,10 @@ and `npm run eval` runs it as an eval (below).
 ## Evals
 
 `npm run eval` runs every task 3 times: setup → `runAgent` → check → reset.
-Name tasks to run only those, and set the trial count with `--trials`, e.g.
-`npm run eval -- timeout-message --trials 1`.
+Name tasks to run only those, set the trial count with `--trials`, and the
+agent's turn limit with `--max-turns` (default 10), e.g.
+`npm run eval -- timeout-message --trials 1 --max-turns 3`. The turn limit is
+saved in the results file and shown under the summary table.
 
 - It refuses to start unless the whole repo's git working tree is clean, because
   reset uses `git checkout`.
