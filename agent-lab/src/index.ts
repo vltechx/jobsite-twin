@@ -11,7 +11,7 @@ const client = new Anthropic();
 
 const MODEL = "claude-sonnet-5-5";
 const MAX_TURNS = 10;
-const TASK = "Read README.md and summarize it in two sentences.";
+const TASK = "Find where describeApiError is defined and explain what it does.";
 
 // The whole conversation, resent every turn (the API is stateless). Only ever
 // appended to, never edited.
