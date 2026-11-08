@@ -37,3 +37,33 @@ mutation CreateScenario($input: CreateScenarioInput!) {
     name
   }
 }
+
+mutation RenameScenario($id: ID!, $name: String!) {
+  renameScenario(id: $id, name: $name) {
+    id
+    name
+  }
+}
+
+mutation DeleteScenario($id: ID!) {
+  deleteScenario(id: $id)
+}
+
+mutation AddMachine($scenarioId: ID!, $input: MachineInput!) {
+  addMachine(scenarioId: $scenarioId, input: $input) {
+    id
+  }
+}
+
+mutation UpdateMachine($id: ID!, $input: UpdateMachineInput!) {
+  updateMachine(id: $id, input: $input) {
+    id
+    name
+    type
+    speedMps
+  }
+}
+
+mutation DeleteMachine($id: ID!) {
+  deleteMachine(id: $id)
+}

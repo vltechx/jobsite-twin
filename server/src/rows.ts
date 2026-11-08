@@ -41,5 +41,6 @@ export interface RunRow {
 }
 
 export const SCENARIO_COLUMNS = 'id, name, site_id';
+export const MACHINE_COLUMNS = 'id, scenario_id, name, type, speed_mps';
 export const RUN_COLUMNS =
   'id, scenario_id, status, started_at, finished_at, duration_sec, distance_m';

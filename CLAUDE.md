@@ -29,11 +29,13 @@ Backend (`cd server`):
 
 ## Layout
 
-- `src/app/jobsite-viewer/jobsite-viewer.ts` — Cesium `Viewer` lifecycle, scenario picker, loading/error banner, scenario load → clear → redraw → clock reset, Follow truck / Site view, Draw route panel (form, validation, save → refetch list → select new scenario), dev click-to-coordinates logger (off while drawing)
+- `src/app/jobsite-viewer/jobsite-viewer.ts` — Cesium `Viewer` lifecycle, scenario picker, loading/error banner, scenario load → clear → redraw → clock reset, Follow truck / Site view, Rename / Delete scenario (inline field, confirm banner), Draw route panel in two modes — new scenario (save → refetch list → select it) or add machine to the loaded scenario (save → reload it) — `runMutation` (one API change at a time, `saving` signal), dev click-to-coordinates logger (off while drawing)
 - `src/app/jobsite-viewer/route-drawer.ts` — draw mode on the map: `globe.pick` clicks → waypoints, ground-clamped points + line, undo; suspends the viewer's own click/double-click actions until `destroy()`
+- `src/app/jobsite-viewer/machine-panel.ts` — presentational list of the loaded scenario's machines: Follow / Edit (name, type, speed) / Delete with confirm, Add machine; emits intents only, closes its editor when a new `machines` list arrives
+- `src/app/jobsite-viewer/_controls.scss` — shared `%control`, `%danger`, `%panel` placeholders (`@use 'controls'`)
 - `src/app/jobsite-viewer/site-features.service.ts` — builds a styled `GeoJsonDataSource` from `Site.geojson` (boundary, haul road, markers), all clamped to terrain
-- `src/app/jobsite-viewer/haul-truck.service.ts` — `addMachine`: route (by `seq`) → densified (~5 m) → `sampleTerrainMostDetailed` → `SampledPositionProperty` at the machine's `speedMps`
-- `src/app/scenarios/` — `scenarios.graphql` (operations), `scenario.service.ts` (typed queries, `createScenario` mutation, `describeApiError`), `route-draft.ts` (draft type, machine-type labels, `validateRouteDraft` mirroring the server's checks)
+- `src/app/jobsite-viewer/haul-truck.service.ts` — `addMachine`: full route as a ground-clamped line (`route-<id>`), then route (by `seq`) → densified (~5 m) → `sampleTerrainMostDetailed` → `SampledPositionProperty` at the machine's `speedMps` (`machine-<id>`); every machine type uses the milk-truck model
+- `src/app/scenarios/` — `scenarios.graphql` (operations), `scenario.service.ts` (typed queries; create / rename / delete scenario and add / update / delete machine mutations; `getScenario` is `network-only` so reloads after edits aren't stale; `describeApiError`), `route-draft.ts` (`MachineFields` ⊂ `MachineDraft` ⊂ `RouteDraft`, machine-type labels, validators mirroring the server's checks, `parseSpeed`)
 - `src/app/graphql/generated/` — codegen output; don't edit by hand
 - `src/app/app.config.ts` — `provideHttpClient` + `provideApollo` (HttpLink to `environment.graphqlUrl`)
 - `src/assets/` — `models/CesiumMilkTruck.glb` (CC BY 4.0, Cesium)

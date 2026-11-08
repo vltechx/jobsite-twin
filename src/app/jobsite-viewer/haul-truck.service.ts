@@ -24,6 +24,8 @@ const TRUCK_MODEL_URL = 'assets/models/CesiumMilkTruck.glb';
 const DENSIFY_SPACING_M = 5;
 /** Raises samples slightly so the trail doesn't flicker in and out of the terrain. */
 const TRAIL_LIFT_M = 1;
+/** Full planned route; same hue as the trail, fainter. */
+const ROUTE_COLOR = Color.CYAN.withAlpha(0.5);
 
 @Injectable({ providedIn: 'root' })
 export class HaulTruckService {
@@ -70,7 +72,20 @@ export class HaulTruckService {
     });
     const stop = JulianDate.addSeconds(start, elapsedSeconds, new JulianDate());
 
-    // 4. Entity facing its direction of travel, with a trail.
+    // 4. The whole route as a line on the ground, so it's visible before the machine
+    //    has driven it (the trail below only covers the part already driven).
+    target.entities.add({
+      id: `route-${machine.id}`,
+      name: `${machine.name} route`,
+      polyline: {
+        positions: Cartesian3.fromDegreesArray(lonLats.flat()),
+        clampToGround: true,
+        width: 4,
+        material: ROUTE_COLOR,
+      },
+    });
+
+    // 5. Entity facing its direction of travel, with a trail.
     const entity = target.entities.add({
       id: `machine-${machine.id}`,
       name: machine.name,
