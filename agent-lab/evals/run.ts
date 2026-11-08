@@ -7,12 +7,14 @@ import { promisify, parseArgs } from "node:util";
 
 import { MAX_TURNS, MODEL, runAgent, type AgentResult } from "../src/agent.js";
 import { REPO_ROOT } from "../src/tools.js";
+import { graphqlErrorsVague } from "./tasks/graphql-errors-vague.js";
 import { latlonSwap } from "./tasks/latlon-swap.js";
+import { timeoutMessage } from "./tasks/timeout-message.js";
 import type { CheckResult, EvalTask } from "./types.js";
 
 // Eval runner: for each task, N times: setup -> runAgent -> check -> reset.
-// Usage: npm run eval [-- --trials 1]
-const TASKS: EvalTask[] = [latlonSwap];
+// Usage: npm run eval [-- [task-id ...] [--trials N]]   (no task ids = all tasks)
+const ALL_TASKS: EvalTask[] = [latlonSwap, timeoutMessage, graphqlErrorsVague];
 
 const execFileAsync = promisify(execFile);
 const RESULTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "results");
@@ -28,12 +30,22 @@ interface TrialResult {
   strayEdits: string[];
 }
 
-const { values } = parseArgs({ options: { trials: { type: "string", default: "3" } } });
+const { values, positionals } = parseArgs({
+  options: { trials: { type: "string", default: "3" } },
+  allowPositionals: true,
+});
 const trials = Number(values.trials);
 if (!Number.isInteger(trials) || trials < 1) {
   console.error(`--trials must be a positive integer (got ${values.trials})`);
   process.exit(1);
 }
+
+const unknown = positionals.filter((id) => !ALL_TASKS.some((t) => t.id === id));
+if (unknown.length > 0) {
+  console.error(`Unknown task: ${unknown.join(", ")}. Tasks: ${ALL_TASKS.map((t) => t.id).join(", ")}`);
+  process.exit(1);
+}
+const TASKS = positionals.length > 0 ? ALL_TASKS.filter((t) => positionals.includes(t.id)) : ALL_TASKS;
 
 /** `git status --porcelain` lines for the whole repo (untracked files included, ignored ones not). */
 async function gitStatus(): Promise<string[]> {

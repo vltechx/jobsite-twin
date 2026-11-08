@@ -25,8 +25,9 @@ and `npm run eval` runs it as an eval (below).
 
 ## Evals
 
-`npm run eval` runs each task in `evals/tasks/` 3 times (`npm run eval -- --trials 1`
-for one): setup → `runAgent` → check → reset.
+`npm run eval` runs every task 3 times: setup → `runAgent` → check → reset.
+Name tasks to run only those, and set the trial count with `--trials`, e.g.
+`npm run eval -- timeout-message --trials 1`.
 
 - It refuses to start unless the whole repo's git working tree is clean, because
   reset uses `git checkout`.
@@ -39,7 +40,14 @@ for one): setup → `runAgent` → check → reset.
 
 | Task | Setup | Check |
 | --- | --- | --- |
-| `latlon-swap` | Swaps `lat` and `lon` in the route `createScenario` sends (`src/app/scenarios/scenario.service.ts`) | `npx ng test --watch=false` exits 0 |
+| `latlon-swap` | Swaps `lat` and `lon` in the route `createScenario` sends (`src/app/scenarios/scenario.service.ts`) | All tests pass |
+| `timeout-message` | None; the agent is asked to make `describeApiError` return "The request timed out. Try again." for HTTP 504 | All tests pass, plus a hidden spec for the 504 message |
+| `graphql-errors-vague` | Joins GraphQL error messages with `', '` instead of `'; '` in `describeApiError`; the prompt only says "some API error messages look wrong" | All tests pass, plus a hidden spec with two errors (the visible spec has only one, so it passes with the bug) |
+
+"All tests pass" means `npx ng test --watch=false` exits 0 and every `*.spec.ts`
+file under `src/` ran. A hidden spec is written just before the check runs and
+deleted right after, so the agent never sees it; reset also deletes it if a
+crash left it behind.
 
 Each trial makes real API calls and runs the Angular tests several times.
 
