@@ -73,7 +73,7 @@ export const editFileTool: Anthropic.Beta.BetaTool = {
     "old_text must match the file exactly, including whitespace and indentation, and must appear exactly once: " +
     "if it is not found, or appears more than once, nothing is changed and an error says which. " +
     "To make old_text unique, include more of the surrounding lines. Read the file first so old_text is exact. " +
-    "The path is relative to the repository root. .env files, git-ignored files " +
+    "The path is relative to the repository root. Test files (*.spec.ts), .env files, git-ignored files " +
     `and files larger than ${MAX_BYTES} bytes cannot be edited.`,
   input_schema: {
     type: "object",
@@ -181,8 +181,12 @@ export async function searchCode(pattern: string): Promise<string> {
 }
 
 export async function editFile(requested: string, oldText: string, newText: string): Promise<string> {
+  // Guardrail: tests define "correct"; the agent must fix the code, not the tests.
+  // Checked on the requested path and again after symlinks are resolved.
+  if (isTestFile(requested)) throw new Error(TEST_FILE_REFUSAL);
   if (oldText === "") throw new Error("old_text must not be empty.");
   const { target } = await resolveRepoFile(requested);
+  if (isTestFile(target)) throw new Error(TEST_FILE_REFUSAL);
   const content = await fsReadFile(target, "utf8");
 
   const count = countOccurrences(content, oldText);
@@ -288,6 +292,13 @@ async function resolveRepoFile(requested: string): Promise<{ target: string }> {
   }
 
   return { target };
+}
+
+const TEST_FILE_REFUSAL = "Editing test files is not allowed.";
+
+// *.spec.ts, case-insensitively (macOS file names are case-insensitive).
+function isTestFile(filePath: string): boolean {
+  return /\.spec\.ts$/i.test(path.basename(filePath));
 }
 
 // .env, .env.local, .env.example, ...

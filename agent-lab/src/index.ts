@@ -11,7 +11,9 @@ const client = new Anthropic();
 
 const MODEL = "claude-sonnet-5-5";
 const MAX_TURNS = 10;
-const TASK = "Find where describeApiError is defined and explain what it does.";
+const TASK =
+  "A unit test in the Angular app is failing. Run the tests, find the bug in the application code and fix it. " +
+  "Don't change any test files. Run the tests again to confirm the fix.";
 
 // The whole conversation, resent every turn (the API is stateless). Only ever
 // appended to, never edited.
