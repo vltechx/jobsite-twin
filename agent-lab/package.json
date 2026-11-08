@@ -5,6 +5,9 @@
   "private": true,
   "type": "module",
   "license": "MIT",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --import tsx src/index.ts"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0"
   },
@@ -12,6 +15,6 @@
     "tsx": "^4.23.15"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.9"
   }
 }
