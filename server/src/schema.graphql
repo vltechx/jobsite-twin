@@ -7,6 +7,14 @@ type Mutation {
   createScenario(input: CreateScenarioInput!): Scenario!
   startSimulationRun(scenarioId: ID!): SimulationRun!
   completeSimulationRun(id: ID!, durationSec: Float!, distanceM: Float!): SimulationRun!
+  renameScenario(id: ID!, name: String!): Scenario!
+  "Deletes the scenario with its machines, routes and runs. Returns the deleted id."
+  deleteScenario(id: ID!): ID!
+  addMachine(scenarioId: ID!, input: MachineInput!): Machine!
+  "Changes a machine's name, type and speed; its route stays the same."
+  updateMachine(id: ID!, input: UpdateMachineInput!): Machine!
+  "Deletes the machine and its route. Returns the deleted id."
+  deleteMachine(id: ID!): ID!
 }
 
 type Scenario {
@@ -77,4 +85,10 @@ input MachineInput {
 input WaypointInput {
   lat: Float!
   lon: Float!
+}
+
+input UpdateMachineInput {
+  name: String!
+  type: MachineType!
+  speedMps: Float!
 }

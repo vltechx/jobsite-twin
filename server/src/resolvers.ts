@@ -1,7 +1,9 @@
 import { GraphQLError } from 'graphql';
+import type pg from 'pg';
 import { pool, withTransaction } from './db.js';
 import type { Loaders } from './loaders.js';
 import {
+  MACHINE_COLUMNS,
   RUN_COLUMNS,
   SCENARIO_COLUMNS,
   type MachineRow,
@@ -15,15 +17,20 @@ export interface Context {
   loaders: Loaders;
 }
 
+interface UpdateMachineInput {
+  name: string;
+  type: MachineType;
+  speedMps: number;
+}
+
+interface MachineInput extends UpdateMachineInput {
+  route: { lat: number; lon: number }[];
+}
+
 interface CreateScenarioInput {
   name: string;
   siteId: string;
-  machines?: {
-    name: string;
-    type: MachineType;
-    speedMps: number;
-    route: { lat: number; lon: number }[];
-  }[] | null;
+  machines?: MachineInput[] | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,17 +73,7 @@ export const resolvers = {
         const scenario = rows[0]!;
 
         for (const m of input.machines ?? []) {
-          const machine = await db.query<{ id: string }>(
-            `INSERT INTO machine (scenario_id, name, type, speed_mps)
-             VALUES ($1, $2, $3, $4) RETURNING id`,
-            [scenario.id, m.name.trim(), m.type, m.speedMps],
-          );
-          await db.query(
-            `INSERT INTO machine_waypoint (machine_id, seq, geom)
-             SELECT $1, w.seq - 1, ST_SetSRID(ST_MakePoint(w.lon, w.lat), 4326)
-             FROM unnest($2::float8[], $3::float8[]) WITH ORDINALITY AS w(lon, lat, seq)`,
-            [machine.rows[0]!.id, m.route.map((p) => p.lon), m.route.map((p) => p.lat)],
-          );
+          await insertMachine(db, scenario.id, m);
         }
         return scenario;
       });
@@ -124,6 +121,66 @@ export const resolvers = {
         `Simulation run ${id} is ${existing.rows[0].status}; only RUNNING runs can be completed`,
       );
     },
+    renameScenario: async (
+      _: unknown,
+      { id, name }: { id: string; name: string },
+    ): Promise<ScenarioRow> => {
+      if (!name.trim()) throw badInput('name must not be empty');
+      if (!isUuid(id)) throw notFound(`Scenario ${id} not found`);
+      const { rows } = await pool.query<ScenarioRow>(
+        `UPDATE scenario SET name = $2 WHERE id = $1 RETURNING ${SCENARIO_COLUMNS}`,
+        [id, name.trim()],
+      );
+      if (!rows[0]) throw notFound(`Scenario ${id} not found`);
+      return rows[0];
+    },
+
+    // Machines, waypoints and runs go with it (ON DELETE CASCADE).
+    deleteScenario: async (_: unknown, { id }: { id: string }): Promise<string> => {
+      if (!isUuid(id)) throw notFound(`Scenario ${id} not found`);
+      const { rowCount } = await pool.query('DELETE FROM scenario WHERE id = $1', [id]);
+      if (!rowCount) throw notFound(`Scenario ${id} not found`);
+      return id;
+    },
+
+    addMachine: async (
+      _: unknown,
+      { scenarioId, input }: { scenarioId: string; input: MachineInput },
+    ): Promise<MachineRow> => {
+      validateMachineInput(input, 'input');
+      if (!isUuid(scenarioId)) throw notFound(`Scenario ${scenarioId} not found`);
+      return withTransaction(async (db) => {
+        // FOR SHARE keeps the scenario from being deleted before the insert commits.
+        const scenario = await db.query('SELECT 1 FROM scenario WHERE id = $1 FOR SHARE', [
+          scenarioId,
+        ]);
+        if (scenario.rowCount === 0) throw notFound(`Scenario ${scenarioId} not found`);
+        return insertMachine(db, scenarioId, input);
+      });
+    },
+
+    updateMachine: async (
+      _: unknown,
+      { id, input }: { id: string; input: UpdateMachineInput },
+    ): Promise<MachineRow> => {
+      validateMachineFields(input, 'input');
+      if (!isUuid(id)) throw notFound(`Machine ${id} not found`);
+      const { rows } = await pool.query<MachineRow>(
+        `UPDATE machine SET name = $2, type = $3, speed_mps = $4
+         WHERE id = $1 RETURNING ${MACHINE_COLUMNS}`,
+        [id, input.name.trim(), input.type, input.speedMps],
+      );
+      if (!rows[0]) throw notFound(`Machine ${id} not found`);
+      return rows[0];
+    },
+
+    // Its waypoints go with it (ON DELETE CASCADE).
+    deleteMachine: async (_: unknown, { id }: { id: string }): Promise<string> => {
+      if (!isUuid(id)) throw notFound(`Machine ${id} not found`);
+      const { rowCount } = await pool.query('DELETE FROM machine WHERE id = $1', [id]);
+      if (!rowCount) throw notFound(`Machine ${id} not found`);
+      return id;
+    },
   },
 
   // Nested fields go through the per-request DataLoaders (see loaders.ts).
@@ -157,17 +214,46 @@ function validateScenarioInput(input: CreateScenarioInput): void {
   if (!input.name.trim()) throw badInput('name must not be empty');
   if (!isUuid(input.siteId)) throw notFound(`Site ${input.siteId} not found`);
   for (const [i, m] of (input.machines ?? []).entries()) {
-    if (!m.name.trim()) throw badInput(`machines[${i}].name must not be empty`);
-    if (!(Number.isFinite(m.speedMps) && m.speedMps > 0)) {
-      throw badInput(`machines[${i}].speedMps must be > 0`);
-    }
-    if (m.route.length < 2) throw badInput(`machines[${i}].route needs at least 2 waypoints`);
-    for (const [j, p] of m.route.entries()) {
-      if (!(Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180)) {
-        throw badInput(`machines[${i}].route[${j}] is not a valid lat/lon`);
-      }
+    validateMachineInput(m, `machines[${i}]`);
+  }
+}
+
+function validateMachineFields(m: UpdateMachineInput, label: string): void {
+  if (!m.name.trim()) throw badInput(`${label}.name must not be empty`);
+  if (!(Number.isFinite(m.speedMps) && m.speedMps > 0)) {
+    throw badInput(`${label}.speedMps must be > 0`);
+  }
+}
+
+function validateMachineInput(m: MachineInput, label: string): void {
+  validateMachineFields(m, label);
+  if (m.route.length < 2) throw badInput(`${label}.route needs at least 2 waypoints`);
+  for (const [j, p] of m.route.entries()) {
+    if (!(Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180)) {
+      throw badInput(`${label}.route[${j}] is not a valid lat/lon`);
     }
   }
+}
+
+/** Inserts a validated machine and its route (waypoint order = array order). */
+async function insertMachine(
+  db: pg.PoolClient,
+  scenarioId: string,
+  m: MachineInput,
+): Promise<MachineRow> {
+  const { rows } = await db.query<MachineRow>(
+    `INSERT INTO machine (scenario_id, name, type, speed_mps)
+     VALUES ($1, $2, $3, $4) RETURNING ${MACHINE_COLUMNS}`,
+    [scenarioId, m.name.trim(), m.type, m.speedMps],
+  );
+  const machine = rows[0]!;
+  await db.query(
+    `INSERT INTO machine_waypoint (machine_id, seq, geom)
+     SELECT $1, w.seq - 1, ST_SetSRID(ST_MakePoint(w.lon, w.lat), 4326)
+     FROM unnest($2::float8[], $3::float8[]) WITH ORDINALITY AS w(lon, lat, seq)`,
+    [machine.id, m.route.map((p) => p.lon), m.route.map((p) => p.lat)],
+  );
+  return machine;
 }
 
 const isNonNegative = (n: number) => Number.isFinite(n) && n >= 0;

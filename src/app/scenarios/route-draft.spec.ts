@@ -1,4 +1,10 @@
-import { validateRouteDraft, type RouteDraft } from './route-draft';
+import {
+  parseSpeed,
+  validateMachineDraft,
+  validateMachineFields,
+  validateRouteDraft,
+  type RouteDraft,
+} from './route-draft';
 
 const valid: RouteDraft = {
   scenarioName: 'North haul',
@@ -33,5 +39,34 @@ describe('validateRouteDraft', () => {
     expect(validateRouteDraft({ ...valid, speedMps })).toEqual([
       'Speed must be a number greater than 0.',
     ]);
+  });
+});
+
+describe('validateMachineDraft', () => {
+  it('does not need a scenario name', () => {
+    const { scenarioName: _, ...machine } = valid;
+    expect(validateMachineDraft(machine)).toEqual([]);
+  });
+
+  it('needs a route and a name', () => {
+    expect(validateMachineDraft({ ...valid, machineName: ' ', waypoints: [] })).toEqual([
+      'Click at least 2 points on the terrain to draw a route.',
+      'Machine name is required.',
+    ]);
+  });
+});
+
+describe('validateMachineFields', () => {
+  it('checks name and speed only', () => {
+    expect(
+      validateMachineFields({ machineName: '', machineType: 'DOZER', speedMps: 0 }),
+    ).toEqual(['Machine name is required.', 'Speed must be a number greater than 0.']);
+  });
+});
+
+describe('parseSpeed', () => {
+  it('treats blank text as invalid, not 0', () => {
+    expect(parseSpeed('  ')).toBeNaN();
+    expect(parseSpeed('2.5')).toBe(2.5);
   });
 });

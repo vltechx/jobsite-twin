@@ -2,8 +2,11 @@ import {
   AfterViewInit,
   Component,
   ElementRef,
+  Injector,
   NgZone,
   OnDestroy,
+  afterNextRender,
+  computed,
   inject,
   isDevMode,
   signal,
@@ -26,15 +29,17 @@ import {
   Terrain,
   Viewer,
 } from 'cesium';
-import { Subscription } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import type { MachineType } from '../graphql/generated/graphql';
 import {
   MACHINE_TYPE_LABELS,
   MACHINE_TYPES,
+  parseSpeed,
+  validateMachineDraft,
   validateRouteDraft,
-  type RouteDraft,
+  type MachineDraft,
 } from '../scenarios/route-draft';
 import {
   ScenarioService,
@@ -43,6 +48,7 @@ import {
   type ScenarioSummary,
 } from '../scenarios/scenario.service';
 import { HaulTruckService } from './haul-truck.service';
+import { MachinePanelComponent, type MachineEdit } from './machine-panel';
 import { RouteDrawer } from './route-drawer';
 import { SiteFeaturesService } from './site-features.service';
 
@@ -53,38 +59,70 @@ const JOBSITE = {
 };
 
 type LoadStatus = 'loading' | 'ready' | 'error';
+/** What a drawn route becomes: a new scenario, or a machine in the loaded one. */
+type DrawMode = 'scenario' | 'machine';
 
 @Component({
   selector: 'app-jobsite-viewer',
+  imports: [MachinePanelComponent],
   template: `
     <div #container class="viewer-container"></div>
 
     <div class="view-controls">
-      <label class="scenario-picker">
-        <span>Scenario</span>
-        <select
-          (change)="onScenarioChange($event)"
-          [disabled]="scenarios().length === 0 || drawing()"
+      @if (renaming()) {
+        <form class="rename-form" (submit)="saveRename($event)" novalidate>
+          <input
+            #renameInput
+            aria-label="Scenario name"
+            [value]="renameText()"
+            (input)="renameText.set(inputValue($event))"
+            maxlength="100"
+          />
+          <button type="submit" [disabled]="saving() || !renameText().trim()">
+            {{ saving() ? 'Saving…' : 'Save' }}
+          </button>
+          <button type="button" (click)="cancelRename()" [disabled]="saving()">Cancel</button>
+        </form>
+      } @else {
+        <label class="scenario-picker">
+          <span>Scenario</span>
+          <select
+            (change)="onScenarioChange($event)"
+            [disabled]="scenarios().length === 0 || locked()"
+          >
+            @for (s of scenarios(); track s.id) {
+              <option [value]="s.id" [selected]="s.id === selectedId()">{{ s.name }}</option>
+            }
+          </select>
+        </label>
+        <button type="button" (click)="startRename()" [disabled]="!scenario() || locked()">
+          Rename
+        </button>
+        <button
+          type="button"
+          class="danger"
+          (click)="askDeleteScenario()"
+          [disabled]="!scenario() || locked()"
         >
-          @for (s of scenarios(); track s.id) {
-            <option [value]="s.id" [selected]="s.id === selectedId()">{{ s.name }}</option>
-          }
-        </select>
-      </label>
+          Delete
+        </button>
+      }
       <button type="button" (click)="followTruck()" [disabled]="!truck()">Follow truck</button>
       <button type="button" (click)="showSite()">Site view</button>
       <button
         type="button"
         (click)="toggleDrawing()"
-        [disabled]="!siteId() || saving()"
-        [class.active]="drawing()"
-        [attr.aria-pressed]="drawing()"
+        [disabled]="
+          !siteId() || saving() || renaming() || confirmingDelete() || drawMode() === 'machine'
+        "
+        [class.active]="drawMode() === 'scenario'"
+        [attr.aria-pressed]="drawMode() === 'scenario'"
       >
         Draw route
       </button>
     </div>
 
-    @if (drawing()) {
+    @if (drawMode(); as mode) {
       <form
         class="draw-panel"
         (submit)="saveRoute($event)"
@@ -92,18 +130,26 @@ type LoadStatus = 'loading' | 'ready' | 'error';
         (change)="drawErrors.set([])"
         novalidate
       >
-        <h2>New scenario</h2>
+        <h2>
+          @if (mode === 'scenario') {
+            New scenario
+          } @else {
+            Add machine to “{{ scenario()?.name }}”
+          }
+        </h2>
         <p class="hint">
           Click the terrain to add waypoints ({{ pointCount() }} so far). Esc cancels.
         </p>
-        <label>
-          Scenario name
-          <input
-            [value]="scenarioName()"
-            (input)="scenarioName.set(inputValue($event))"
-            maxlength="100"
-          />
-        </label>
+        @if (mode === 'scenario') {
+          <label>
+            Scenario name
+            <input
+              [value]="scenarioName()"
+              (input)="scenarioName.set(inputValue($event))"
+              maxlength="100"
+            />
+          </label>
+        }
         <label>
           Machine name
           <input
@@ -144,17 +190,47 @@ type LoadStatus = 'loading' | 'ready' | 'error';
             Undo
           </button>
           <button type="button" (click)="cancelDrawing()" [disabled]="saving()">Cancel</button>
-          <button type="submit" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save' }}</button>
+          <button type="submit" class="primary" [disabled]="saving()">
+            {{ saving() ? 'Saving…' : 'Save' }}
+          </button>
         </div>
       </form>
+    } @else if (scenario(); as s) {
+      <app-machine-panel
+        [machines]="s.machines"
+        [busy]="saving()"
+        [error]="machineError()"
+        (follow)="followMachine($event)"
+        (add)="startDrawing('machine')"
+        (save)="saveMachine($event)"
+        (remove)="deleteMachine($event)"
+      />
     }
 
-    @if (status() === 'loading') {
+    @if (confirmingDelete() && scenario(); as s) {
+      <div class="status-banner confirm" role="alertdialog" aria-label="Delete scenario">
+        <span>
+          Delete “{{ s.name }}”? Its {{ machineCount(s.machines.length) }} and simulation runs
+          are deleted too. This can't be undone.
+        </span>
+        <button type="button" (click)="cancelDeleteScenario()" [disabled]="saving()">
+          Cancel
+        </button>
+        <button type="button" class="danger" (click)="deleteScenario()" [disabled]="saving()">
+          {{ saving() ? 'Deleting…' : 'Delete' }}
+        </button>
+      </div>
+    } @else if (status() === 'loading') {
       <div class="status-banner" role="status">{{ message() }}</div>
     } @else if (status() === 'error') {
       <div class="status-banner error" role="alert">
         <span>{{ message() }}</span>
         <button type="button" (click)="retry()">Retry</button>
+      </div>
+    } @else if (actionError(); as error) {
+      <div class="status-banner error" role="alert">
+        <span>{{ error }}</span>
+        <button type="button" (click)="actionError.set(null)">Dismiss</button>
       </div>
     }
   `,
@@ -163,23 +239,39 @@ type LoadStatus = 'loading' | 'ready' | 'error';
 })
 export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
   private readonly container = viewChild.required<ElementRef<HTMLDivElement>>('container');
+  private readonly renameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
   private readonly zone = inject(NgZone);
+  private readonly injector = inject(Injector);
   private readonly scenarioService = inject(ScenarioService);
   private readonly siteFeatures = inject(SiteFeaturesService);
   private readonly haulTruck = inject(HaulTruckService);
 
   protected readonly scenarios = signal<ScenarioSummary[]>([]);
   protected readonly selectedId = signal<string | null>(null);
+  /** The loaded scenario; null while loading or after a delete. */
+  protected readonly scenario = signal<ScenarioDetail | null>(null);
   protected readonly status = signal<LoadStatus>('loading');
   protected readonly message = signal('Loading scenarios…');
   protected readonly truck = signal<Entity | undefined>(undefined);
   /** Site of the loaded scenario; new scenarios are created on it. */
   protected readonly siteId = signal<string | null>(null);
 
+  /** True while any create/rename/delete/update request is in flight. */
+  protected readonly saving = signal(false);
+  /** Error from rename/delete scenario, shown until dismissed. */
+  protected readonly actionError = signal<string | null>(null);
+  /** Error from a machine edit/delete, shown in the machine panel. */
+  protected readonly machineError = signal<string | null>(null);
+
+  // Rename / delete scenario
+  protected readonly renaming = signal(false);
+  protected readonly renameText = signal('');
+  protected readonly confirmingDelete = signal(false);
+
   // Draw-route mode
   protected readonly machineTypes = MACHINE_TYPES;
   protected readonly machineTypeLabels = MACHINE_TYPE_LABELS;
-  protected readonly drawing = signal(false);
+  protected readonly drawMode = signal<DrawMode | null>(null);
   protected readonly pointCount = signal(0);
   protected readonly scenarioName = signal('');
   protected readonly machineName = signal('Haul truck');
@@ -187,13 +279,17 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
   /** Kept as typed text; parsed and validated on save. */
   protected readonly speed = signal('8');
   protected readonly drawErrors = signal<string[]>([]);
-  protected readonly saving = signal(false);
+
+  /** Scenario switching, renaming and deleting wait until other edits are done. */
+  protected readonly locked = computed(
+    () => this.drawMode() !== null || this.renaming() || this.confirmingDelete() || this.saving(),
+  );
 
   private viewer?: Viewer;
   private terrain?: Terrain;
   private clickHandler?: ScreenSpaceEventHandler;
   private request?: Subscription;
-  private saveRequest?: Subscription;
+  private mutation?: Subscription;
   private drawer?: RouteDrawer;
   /** What Retry should redo. */
   private failedStep: 'list' | 'scenario' = 'list';
@@ -246,6 +342,13 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  protected followMachine(id: string): void {
+    const entity = this.machineSource?.entities.getById(`machine-${id}`);
+    if (this.viewer && entity) {
+      this.viewer.trackedEntity = entity;
+    }
+  }
+
   protected showSite(): void {
     if (this.viewer) {
       this.viewer.trackedEntity = undefined;
@@ -253,11 +356,126 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  protected onEscape(): void {
+    if (this.drawMode()) {
+      this.cancelDrawing();
+    } else if (this.renaming()) {
+      this.cancelRename();
+    } else if (this.confirmingDelete()) {
+      this.cancelDeleteScenario();
+    }
+  }
+
+  protected inputValue(event: Event): string {
+    return (event.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  protected machineCount(n: number): string {
+    return n === 1 ? '1 machine' : `${n} machines`;
+  }
+
+  // --- Rename / delete scenario -------------------------------------------------
+
+  protected startRename(): void {
+    const scenario = this.scenario();
+    if (!scenario || this.locked()) return;
+    this.actionError.set(null);
+    this.renameText.set(scenario.name);
+    this.renaming.set(true);
+    afterNextRender(() => this.renameInput()?.nativeElement.select(), {
+      injector: this.injector,
+    });
+  }
+
+  protected cancelRename(): void {
+    if (this.saving()) return;
+    this.renaming.set(false);
+  }
+
+  /** Renames in place: updates the picker and loaded scenario without redrawing. */
+  protected saveRename(event: Event): void {
+    event.preventDefault();
+    const scenario = this.scenario();
+    const name = this.renameText().trim();
+    if (!scenario || !name || this.saving()) return;
+    if (name === scenario.name) {
+      this.renaming.set(false);
+      return;
+    }
+    this.runMutation(
+      this.scenarioService.renameScenario(scenario.id, name),
+      (renamed) => {
+        this.renaming.set(false);
+        this.scenarios.update((list) =>
+          list.map((s) => (s.id === renamed.id ? { ...s, name: renamed.name } : s)),
+        );
+        this.scenario.update((s) => (s?.id === renamed.id ? { ...s, name: renamed.name } : s));
+      },
+      (message) => this.actionError.set(`Couldn't rename the scenario: ${message}`),
+    );
+  }
+
+  protected askDeleteScenario(): void {
+    if (!this.scenario() || this.locked()) return;
+    this.actionError.set(null);
+    this.confirmingDelete.set(true);
+  }
+
+  protected cancelDeleteScenario(): void {
+    if (this.saving()) return;
+    this.confirmingDelete.set(false);
+  }
+
+  /** Deletes the loaded scenario, then shows the first remaining one. */
+  protected deleteScenario(): void {
+    const scenario = this.scenario();
+    if (!scenario || this.saving()) return;
+    this.runMutation(
+      this.scenarioService.deleteScenario(scenario.id),
+      () => {
+        this.confirmingDelete.set(false);
+        this.unloadScenario();
+        this.selectedId.set(null);
+        this.loadScenarioList();
+      },
+      (message) => {
+        this.confirmingDelete.set(false);
+        this.actionError.set(`Couldn't delete the scenario: ${message}`);
+      },
+    );
+  }
+
+  // --- Machines -------------------------------------------------------------------
+
+  protected saveMachine({ id, fields }: MachineEdit): void {
+    const scenario = this.scenario();
+    if (!scenario || this.saving()) return;
+    this.machineError.set(null);
+    this.runMutation(
+      this.scenarioService.updateMachine(id, fields),
+      () => this.loadScenario(scenario.id),
+      (message) => this.machineError.set(`Couldn't save the machine: ${message}`),
+    );
+  }
+
+  protected deleteMachine(id: string): void {
+    const scenario = this.scenario();
+    if (!scenario || this.saving()) return;
+    this.machineError.set(null);
+    this.runMutation(
+      this.scenarioService.deleteMachine(id),
+      () => this.loadScenario(scenario.id),
+      (message) => this.machineError.set(`Couldn't delete the machine: ${message}`),
+    );
+  }
+
+  // --- Draw route -----------------------------------------------------------------
+
   protected toggleDrawing(): void {
-    if (this.drawing()) {
+    if (this.drawMode()) {
       this.cancelDrawing();
     } else {
-      this.startDrawing();
+      this.startDrawing('scenario');
     }
   }
 
@@ -270,51 +488,65 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
     this.stopDrawing();
   }
 
-  protected onEscape(): void {
-    if (this.drawing()) {
-      this.cancelDrawing();
+  /**
+   * Validates the drawing, then either creates a scenario (and switches to it) or adds
+   * the machine to the loaded scenario (and redraws it).
+   */
+  protected saveRoute(event: Event): void {
+    event.preventDefault();
+    const mode = this.drawMode();
+    if (!this.drawer || !mode || this.saving()) return;
+
+    const machine: MachineDraft = {
+      machineName: this.machineName(),
+      machineType: this.machineType(),
+      speedMps: parseSpeed(this.speed()),
+      waypoints: this.drawer.waypoints(),
+    };
+    const onError = (message: string) => this.drawErrors.set([`Couldn't save: ${message}`]);
+
+    if (mode === 'scenario') {
+      const siteId = this.siteId();
+      if (!siteId) return;
+      const draft = { ...machine, scenarioName: this.scenarioName() };
+      if (!this.checkDraft(validateRouteDraft(draft))) return;
+      this.runMutation(
+        this.scenarioService.createScenario(siteId, draft),
+        (created) => {
+          this.stopDrawing();
+          this.scenarioName.set('');
+          this.loadScenarioList(created.id);
+        },
+        onError,
+      );
+    } else {
+      const scenario = this.scenario();
+      if (!scenario) return;
+      if (!this.checkDraft(validateMachineDraft(machine))) return;
+      this.runMutation(
+        this.scenarioService.addMachine(scenario.id, machine),
+        () => {
+          this.stopDrawing();
+          this.loadScenario(scenario.id);
+        },
+        onError,
+      );
     }
   }
 
-  protected inputValue(event: Event): string {
-    return (event.target as HTMLInputElement | HTMLSelectElement).value;
-  }
-
-  /** Validates the draft, creates the scenario, then loads and plays it. */
-  protected saveRoute(event: Event): void {
-    event.preventDefault();
-    const siteId = this.siteId();
-    if (!this.drawer || !siteId || this.saving()) return;
-
-    const draft: RouteDraft = {
-      scenarioName: this.scenarioName(),
-      machineName: this.machineName(),
-      machineType: this.machineType(),
-      speedMps: this.speed().trim() === '' ? NaN : Number(this.speed()),
-      waypoints: this.drawer.waypoints(),
-    };
-    const errors = validateRouteDraft(draft);
-    this.drawErrors.set(errors);
-    if (errors.length > 0) return;
-
-    this.saving.set(true);
-    this.saveRequest = this.scenarioService.createScenario(siteId, draft).subscribe({
-      next: (created) => {
-        this.saving.set(false);
-        this.stopDrawing();
-        this.scenarioName.set('');
-        this.loadScenarioList(created.id);
-      },
-      error: (err) => {
-        this.saving.set(false);
-        this.drawErrors.set([`Couldn't save: ${describeApiError(err)}`]);
-      },
-    });
-  }
-
-  private startDrawing(): void {
+  protected startDrawing(mode: DrawMode): void {
     const viewer = this.viewer;
-    if (!viewer || viewer.isDestroyed() || this.drawer) return;
+    if (!viewer || viewer.isDestroyed() || this.drawer || this.saving()) return;
+    if (mode === 'machine') {
+      const scenario = this.scenario();
+      if (!scenario) return;
+      this.machineName.set(
+        `${MACHINE_TYPE_LABELS[this.machineType()]} ${scenario.machines.length + 1}`,
+      );
+    }
+    this.renaming.set(false);
+    this.confirmingDelete.set(false);
+    this.machineError.set(null);
     // Stop following the truck so the camera holds still while clicking.
     viewer.trackedEntity = undefined;
     // The dev coordinate logger would also fire on every waypoint click.
@@ -322,21 +554,46 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
     this.drawErrors.set([]);
     this.pointCount.set(0);
     this.drawer = new RouteDrawer(viewer, (count) => this.pointCount.set(count));
-    this.drawing.set(true);
+    this.drawMode.set(mode);
+  }
+
+  private checkDraft(errors: string[]): boolean {
+    this.drawErrors.set(errors);
+    return errors.length === 0;
   }
 
   private stopDrawing(): void {
-    this.saveRequest?.unsubscribe();
-    this.saving.set(false);
     this.drawer?.destroy();
     this.drawer = undefined;
-    this.drawing.set(false);
+    this.drawMode.set(null);
     this.pointCount.set(0);
     this.drawErrors.set([]);
     if (isDevMode() && this.viewer && !this.viewer.isDestroyed() && !this.clickHandler) {
       this.clickHandler = this.createCoordinateLogger(this.viewer);
     }
   }
+
+  /** Runs one API change at a time, with `saving` set while it's in flight. */
+  private runMutation<T>(
+    request: Observable<T>,
+    onDone: (value: T) => void,
+    onError: (message: string) => void,
+  ): void {
+    this.saving.set(true);
+    this.mutation?.unsubscribe();
+    this.mutation = request.subscribe({
+      next: (value) => {
+        this.saving.set(false);
+        onDone(value);
+      },
+      error: (err) => {
+        this.saving.set(false);
+        onError(describeApiError(err));
+      },
+    });
+  }
+
+  // --- Loading and drawing ----------------------------------------------------------
 
   /** Loads the list, then selects `preferredId`, the current scenario, or the first. */
   private loadScenarioList(preferredId?: string): void {
@@ -348,7 +605,9 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
         if (scenarios.length === 0) {
           this.setError(
             'list',
-            'No scenarios in the database yet. Seed one with: cd server && npm run seed',
+            this.siteId()
+              ? 'No scenarios left. Use Draw route to create one.'
+              : 'No scenarios in the database yet. Seed one with: cd server && npm run seed',
           );
           return;
         }
@@ -367,9 +626,9 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   private loadScenario(id: string): void {
-    const generation = ++this.loadGeneration;
+    this.unloadScenario();
+    const generation = this.loadGeneration;
     this.selectedId.set(id);
-    this.clearScene();
     this.setLoading('Loading scenario…');
 
     this.request?.unsubscribe();
@@ -384,6 +643,13 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
       },
       error: (err) => this.setError('scenario', describeApiError(err)),
     });
+  }
+
+  /** Clears the scene and discards any in-flight draw. */
+  private unloadScenario(): void {
+    this.loadGeneration++;
+    this.scenario.set(null);
+    this.clearScene();
   }
 
   /** Adds the scenario's site and machines, then resets the clock to the trip. */
@@ -419,6 +685,7 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
     const followed =
       (haulTruck && machines.entities.getById(`machine-${haulTruck.id}`)) ?? added[0]?.entity;
     this.truck.set(followed);
+    this.scenario.set(scenario);
     this.status.set('ready');
   }
 
@@ -502,7 +769,7 @@ export class JobsiteViewerComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.request?.unsubscribe();
-    this.saveRequest?.unsubscribe();
+    this.mutation?.unsubscribe();
     this.loadGeneration++; // discard any in-flight draw
 
     this.drawer?.destroy();

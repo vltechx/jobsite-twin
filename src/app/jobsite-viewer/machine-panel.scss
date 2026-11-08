@@ -1,0 +1,65 @@
+@use 'controls';
+
+.machine-panel {
+  @extend %panel;
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    button {
+      @extend %control;
+      padding: 4px 10px;
+    }
+  }
+
+  > ul {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    > li {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 4px;
+    }
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .meta {
+    color: #cde;
+    font-size: 13px;
+  }
+
+  .confirm {
+    margin: 0;
+  }
+
+  .actions button {
+    padding: 4px 10px;
+  }
+}
