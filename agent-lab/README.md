@@ -9,10 +9,13 @@ not part of the Angular build or the GraphQL server.
 
 ## Status
 
-Step 2: `src/index.ts` sends Claude (`claude-sonnet-5-5`) a fixed task — "Read
-README.md and summarize it in two sentences." — with one tool offered,
-`read_file` (`src/tools.ts`), and prints the reply blocks and the stop reason.
-There is no agent loop yet, so a requested tool call is printed, not run.
+Step 3: `src/index.ts` runs an agent loop on Claude (`claude-sonnet-5-5`) for a
+fixed task — "Read README.md and summarize it in two sentences." Each turn it
+sends the conversation and the tools (`src/tools.ts`); when the model asks for
+a tool, it runs it, appends the result, and loops; at `end_turn` it prints the
+final answer. It stops after 10 turns, or on any other stop reason (such as a
+refusal). Each tool call is printed with its turn number and input; a failing
+tool is reported back to the model as an error result.
 
 `read_file` reads only files inside the Jobsite Twin repo (paths relative to
 the repo root, symlinks resolved) and refuses git-ignored files such as `.env`
@@ -33,5 +36,5 @@ cp .env.example .env   # then put your key in .env
 npm start
 ```
 
-The reply blocks and stop reason go to stdout; the model and token counts go
-to stderr.
+The turn log and final answer go to stdout; the model and total token counts
+go to stderr.

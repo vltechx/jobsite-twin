@@ -32,6 +32,25 @@ export const readFileTool: Anthropic.Beta.BetaTool = {
   strict: true,
 };
 
+// Every tool offered to the model.
+export const tools = [readFileTool];
+
+// Run the tool the model asked for. Throws an Error with a readable message for
+// an unknown tool or bad input; the loop reports that back to the model.
+export async function runTool(name: string, input: unknown): Promise<string> {
+  switch (name) {
+    case readFileTool.name: {
+      const { path: requested } = (input ?? {}) as { path?: unknown };
+      if (typeof requested !== "string") {
+        throw new Error("read_file needs a string `path`.");
+      }
+      return readFile(requested);
+    }
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
+}
+
 // What actually runs. Throws an Error with a readable message on any refusal.
 export async function readFile(requested: string): Promise<string> {
   const root = await realpath(REPO_ROOT);
