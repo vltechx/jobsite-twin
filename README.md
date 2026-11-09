@@ -145,7 +145,7 @@ Other commands: `npx ng build` (production build to `dist/`), `npx ng test` (uni
 
 - **Agent loop** (`runAgent`): sends the task to Claude, runs the tools it asks for (`read_file`, `search_code`, `edit_file`, `run_tests`), feeds the results back and stops at a final answer or a turn limit. The tools stay inside the repo, skip `.env` and git-ignored files, and refuse to edit `*.spec.ts` files.
 - **Eval runner** (`npm run eval`): for each task it plants a problem in the app, lets the agent work, checks the result with the unit tests (some tasks add a hidden spec), then resets the files with git. It saves every tool call to a results file and prints the pass rate, turns, tokens and time per task.
-- **Three tasks**: `latlon-swap` (a swapped lat/lon in `createScenario`), `timeout-message` (add a 504 message to `describeApiError`) and `graphql-errors-vague` (a wrong separator in GraphQL error messages, reported only as "some messages look wrong").
+- **Three tasks**: two bug fixes and one small feature in the Angular app, described in [agent-lab/README.md](agent-lab/README.md). The agent's tools can't read `agent-lab/`, so the tasks' answers stay hidden from it; this README doesn't spell them out either, since the agent can read it.
 - **Options**: run selected tasks, `--trials`, `--max-turns` and `--variant` (`baseline` with no system prompt, or `guided` with a system prompt on working efficiently).
 
 See [agent-lab/README.md](agent-lab/README.md) for setup and details. Running it needs an Anthropic API key and makes billed API calls.

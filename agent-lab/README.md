@@ -75,7 +75,11 @@ Each trial makes real API calls and runs the Angular tests several times.
 Limits shared by all tools: paths are relative to the Jobsite Twin repo root and
 must stay inside it (symlinks are resolved before checking); `.env` and `.env.*`
 files (including `.env.example`) are never read, searched or edited; git-ignored
-files (such as `node_modules` and `src/environments/environment.ts`) are skipped.
+files (such as `node_modules` and `src/environments/environment.ts`) are skipped;
+and `agent-lab/` itself is off limits, so the agent can't read the eval tasks
+(their planted bugs and hidden specs) or edit its own harness. Keep task details
+out of files outside `agent-lab/` (such as the root README), which the agent can
+read.
 
 ## Requirements
 
