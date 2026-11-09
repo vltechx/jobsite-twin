@@ -1,3 +1,5 @@
 node_modules/
 dist/
 .env
+# Eval run output (evals/run.ts refuses to start on a dirty tree)
+evals/results/

@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 // The Jobsite Twin repo root: this file is <repo>/agent-lab/src/tools.ts.
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 const MAX_BYTES = 100_000;
 const MAX_MATCHES = 50;
@@ -26,8 +26,8 @@ export const readFileTool: Anthropic.Beta.BetaTool = {
     "Read a text file from the Jobsite Twin repository and return its contents as UTF-8 text. " +
     "Use this whenever you need to know what a file in the repository says. " +
     "The path is relative to the repository root (for example \"README.md\" or \"server/src/schema.graphql\"). " +
-    "Only files inside the repository can be read; .env files, git-ignored files (such as node_modules) " +
-    `and files larger than ${MAX_BYTES} bytes are refused with an error.`,
+    "Only files inside the repository can be read; .env files, git-ignored files (such as node_modules), " +
+    `the agent-lab/ folder (this tool's own code) and files larger than ${MAX_BYTES} bytes are refused with an error.`,
   input_schema: {
     type: "object",
     properties: {
@@ -51,7 +51,8 @@ export const searchCodeTool: Anthropic.Beta.BetaTool = {
     "The pattern is matched literally and case-sensitively (it is not a regular expression). " +
     `At most ${MAX_MATCHES} matches are returned; if there are more, the result says how many, ` +
     "and a more specific pattern will narrow them. " +
-    "Git-ignored files (such as node_modules and build output) and .env files are not searched.",
+    "Git-ignored files (such as node_modules and build output), .env files and the agent-lab/ folder " +
+    "(this tool's own code) are not searched.",
   input_schema: {
     type: "object",
     properties: {
@@ -73,8 +74,8 @@ export const editFileTool: Anthropic.Beta.BetaTool = {
     "old_text must match the file exactly, including whitespace and indentation, and must appear exactly once: " +
     "if it is not found, or appears more than once, nothing is changed and an error says which. " +
     "To make old_text unique, include more of the surrounding lines. Read the file first so old_text is exact. " +
-    "The path is relative to the repository root. Test files (*.spec.ts), .env files, git-ignored files " +
-    `and files larger than ${MAX_BYTES} bytes cannot be edited.`,
+    "The path is relative to the repository root. Test files (*.spec.ts), .env files, git-ignored files, " +
+    `the agent-lab/ folder (this tool's own code) and files larger than ${MAX_BYTES} bytes cannot be edited.`,
   input_schema: {
     type: "object",
     properties: {
@@ -157,12 +158,14 @@ export async function searchCode(pattern: string): Promise<string> {
   let stdout: string;
   try {
     // git grep skips git-ignored files; --untracked also searches new files
-    // that aren't committed yet. The pathspecs exclude every .env file.
+    // that aren't committed yet. The pathspecs exclude every .env file and the
+    // harness folder (case-insensitively, like isHarnessPath).
     ({ stdout } = await execFileAsync(
       "git",
       [
         "grep", "--untracked", "-n", "-I", "--fixed-strings", "-e", pattern,
         "--", ".", ":(exclude,glob)**/.env", ":(exclude,glob)**/.env.*",
+        `:(exclude,icase)${HARNESS_DIR}`,
       ],
       { cwd: root, maxBuffer: 20 * 1024 * 1024 },
     ));
@@ -207,7 +210,26 @@ export async function editFile(requested: string, oldText: string, newText: stri
   return `Edited ${requested}: replaced 1 occurrence.`;
 }
 
-export function runTests(): Promise<string> {
+export async function runTests(): Promise<string> {
+  const { exitCode, timedOut, output } = await runTestSuite();
+  const tail = output.trimEnd().split("\n").slice(-TEST_TAIL_LINES).join("\n");
+  const status = timedOut
+    ? `timed out after ${TEST_TIMEOUT_MS / 60_000} minutes and was stopped`
+    : `exit code: ${exitCode}`;
+  // A failing test run is a normal result for the model to read, not a tool error.
+  return `${status}\n--- last ${TEST_TAIL_LINES} lines of output ---\n${tail}`;
+}
+
+export interface TestSuiteResult {
+  /** Process exit code, or the signal name if it was killed. */
+  exitCode: number | string | null;
+  timedOut: boolean;
+  /** Full stdout + stderr, ANSI codes stripped. */
+  output: string;
+}
+
+/** Runs `npx ng test --watch=false` from the repo root (used by run_tests and by evals). */
+export function runTestSuite(): Promise<TestSuiteResult> {
   return new Promise((resolve, reject) => {
     // The tests don't need the API key, so don't hand it to them.
     const { ANTHROPIC_API_KEY: _apiKey, ...env } = process.env;
@@ -240,12 +262,7 @@ export function runTests(): Promise<string> {
 
     child.on("close", (code, signal) => {
       clearTimeout(timer);
-      const tail = stripAnsi(output).trimEnd().split("\n").slice(-TEST_TAIL_LINES).join("\n");
-      const status = timedOut
-        ? `timed out after ${TEST_TIMEOUT_MS / 60_000} minutes and was stopped`
-        : `exit code: ${code ?? signal}`;
-      // A failing test run is a normal result for the model to read, not a tool error.
-      resolve(`${status}\n--- last ${TEST_TAIL_LINES} lines of output ---\n${tail}`);
+      resolve({ exitCode: code ?? signal, timedOut, output: stripAnsi(output) });
     });
   });
 }
@@ -279,6 +296,9 @@ async function resolveRepoFile(requested: string): Promise<{ target: string }> {
   if (isEnvFile(target)) {
     throw new Error(`Refused: ${requested} is an .env file.`);
   }
+  if (isHarnessPath(relative)) {
+    throw new Error(`Refused: ${requested} is in ${HARNESS_DIR}/, the agent's own harness.`);
+  }
   if (isGitIgnored(root, relative)) {
     throw new Error(`Refused: ${requested} is git-ignored (it may hold secrets or build output).`);
   }
@@ -299,6 +319,15 @@ const TEST_FILE_REFUSAL = "Editing test files is not allowed.";
 // *.spec.ts, case-insensitively (macOS file names are case-insensitive).
 function isTestFile(filePath: string): boolean {
   return /\.spec\.ts$/i.test(path.basename(filePath));
+}
+
+// agent-lab/ holds this harness and the eval tasks (planted bugs, hidden specs),
+// so the agent must not read, search or edit it. Compared case-insensitively
+// because macOS file names are.
+const HARNESS_DIR = "agent-lab";
+function isHarnessPath(relative: string): boolean {
+  const first = relative.split(path.sep)[0].toLowerCase();
+  return first === HARNESS_DIR;
 }
 
 // .env, .env.local, .env.example, ...

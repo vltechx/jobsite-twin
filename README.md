@@ -1,8 +1,12 @@
 # Jobsite Twin
 
-A prototype construction-site digital twin built with Angular and CesiumJS.
+A prototype construction-site digital twin built with Angular and CesiumJS. I built it to learn 3D geospatial web apps (terrain, ground-clamped features, time-based animation) and a GraphQL + PostGIS backend, end to end.
 
-![Jobsite Twin screenshot](docs/screenshot.png)
+Not production-ready: there's no authentication, and the API accepts requests from any origin.
+
+![Jobsite Twin: a haul truck driving its route across the Bingham Canyon mine, with the site boundary, markers, the Machines panel and the scenario toolbar](docs/screenshot.png)
+
+*The "Baseline haul cycle" scenario: the haul truck leaves its trail along the route, inside the orange site boundary, with the Machines panel on the left and the scenario controls along the top.*
 
 ## Features
 
@@ -134,6 +138,17 @@ npx ng serve    # or: npm start
 Open <http://localhost:4200>. If the backend isn't running, the app shows "Can't reach the GraphQL API" with a Retry button.
 
 Other commands: `npx ng build` (production build to `dist/`), `npx ng test` (unit tests), `npm run codegen` (regenerate typed queries in `src/app/graphql/generated/` after changing `src/app/**/*.graphql` or `server/src/schema.graphql`).
+
+## agent-lab
+
+[`agent-lab/`](agent-lab/) is a separate learning project, not part of the app's build. It's a small agent harness written on the Anthropic SDK, plus an eval runner that measures how well it fixes this repo:
+
+- **Agent loop** (`runAgent`): sends the task to Claude, runs the tools it asks for (`read_file`, `search_code`, `edit_file`, `run_tests`), feeds the results back and stops at a final answer or a turn limit. The tools stay inside the repo, skip `.env` and git-ignored files, and refuse to edit `*.spec.ts` files.
+- **Eval runner** (`npm run eval`): for each task it plants a problem in the app, lets the agent work, checks the result with the unit tests (some tasks add a hidden spec), then resets the files with git. It saves every tool call to a results file and prints the pass rate, turns, tokens and time per task.
+- **Three tasks**: two bug fixes and one small feature in the Angular app, described in [agent-lab/README.md](agent-lab/README.md). The agent's tools can't read `agent-lab/`, so the tasks' answers stay hidden from it; this README doesn't spell them out either, since the agent can read it.
+- **Options**: run selected tasks, `--trials`, `--max-turns` and `--variant` (`baseline` with no system prompt, or `guided` with a system prompt on working efficiently).
+
+See [agent-lab/README.md](agent-lab/README.md) for setup and details. Running it needs an Anthropic API key and makes billed API calls.
 
 ## How I built it
 
