@@ -1,6 +1,8 @@
 # Jobsite Twin
 
-A prototype construction-site digital twin built with Angular and CesiumJS.
+A prototype construction-site digital twin built with Angular and CesiumJS. I built it to learn 3D geospatial web apps (terrain, ground-clamped features, time-based animation) and a GraphQL + PostGIS backend, end to end.
+
+Not production-ready: there's no authentication, and the API accepts requests from any origin.
 
 ![Jobsite Twin: a haul truck driving its route across the Bingham Canyon mine, with the site boundary, markers, the Machines panel and the scenario toolbar](docs/screenshot.png)
 
